@@ -1,0 +1,772 @@
+<style>
+  :root {
+    --vg-brown: #634121;
+    --vg-amber: #E89F22;
+    --vg-cream: #FAF9F6;
+    --border-light: #e0d7c6;
+    --disabled-tan: #d2b48c;
+  }
+
+  body {
+    background: var(--vg-cream);
+    font-family: Verdana, Geneva, sans-serif;
+    color: #333;
+  }
+
+  .hidden {
+    display: none !important;
+  }
+
+  /* CARDS */
+  .item-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+    box-shadow: 0 4px 12px rgba(99, 65, 33, 0.05);
+    overflow: hidden;
+    height: 100%;
+    transition: 0.2s;
+  }
+
+  .item-card:hover {
+    transform: translateY(-3px);
+  }
+
+  .item-img {
+    height: 120px;
+    width: 100%;
+    object-fit: cover;
+    background: #f9f9f9;
+  }
+
+  #cart-sidebar {
+    background: white;
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 8px 20px rgba(99, 65, 33, 0.1);
+    border: 1px solid var(--border-light);
+    position: sticky;
+    top: 20px;
+  }
+
+  /* THEMED BUTTONS & STATES */
+
+  /* Login Button (Brown) */
+  #login-btn {
+    background-color: var(--vg-brown) !important;
+    border: none !important;
+    color: white !important;
+  }
+
+  #login-btn:disabled {
+    background-color: var(--disabled-tan) !important;
+    opacity: 0.8;
+    cursor: not-allowed;
+  }
+
+  /* Place Order Button (Amber) */
+  #place-order-btn {
+    background-color: var(--vg-amber) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: bold;
+  }
+
+  #place-order-btn.disabled,
+  #place-order-btn:disabled {
+    background-color: var(--disabled-tan) !important;
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Inventory 'Add' Buttons (Brown by default) */
+  .btn-success {
+    background-color: var(--vg-brown) !important;
+    border: none !important;
+    color: white !important;
+  }
+
+  /* 'Added!' Feedback State (Amber) */
+  .btn-clicked {
+    transform: scale(0.9) !important;
+    background-color: var(--vg-amber) !important;
+    color: white !important;
+    transition: 0.1s;
+  }
+
+  #login-section {
+    border: none;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  .card-header {
+    background-color: var(--vg-brown) !important;
+    border-bottom: 3px solid var(--vg-amber);
+  }
+
+  .remove-btn {
+    color: #dc3545;
+    cursor: pointer;
+  }
+
+  /* HELPERS */
+  #custom-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: none;
+  }
+
+  .loader {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #FFF;
+    border-bottom-color: transparent;
+    border-radius: 50%;
+    display: inline-block;
+    animation: rotation 1s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+
+  @keyframes rotation {
+    0% {
+      transform: rotate(0deg);
+    }
+
+    100% {
+      transform: rotate(360deg);
+    }
+  }
+
+  .moq-label {
+    font-size: 0.68rem;
+    color: #888;
+    display: block;
+    margin-top: 4px;
+  }
+
+  @keyframes highlight-cart {
+    0% {
+      background-color: #fff9e6;
+    }
+
+    100% {
+      background-color: white;
+    }
+  }
+
+  .cart-updated {
+    animation: highlight-cart 0.8s ease-out;
+  }
+
+  h5,
+  h6,
+  .fw-bold {
+    color: var(--vg-brown);
+  }
+
+  /* Fix for badge green */
+  .badge.text-success {
+    color: var(--vg-brown) !important;
+  }
+
+  /* CLOSED STORE BANNER */
+  .empty-store-banner {
+    background: white;
+    border: 2px dashed var(--vg-amber);
+    border-radius: 20px;
+    padding: 40px 20px;
+    text-align: center;
+    margin-top: 30px;
+    box-shadow: 0 10px 25px rgba(99, 65, 33, 0.05);
+  }
+
+  .empty-store-icon {
+    color: var(--vg-amber);
+    margin-bottom: 20px;
+    opacity: 0.8;
+  }
+
+  .empty-store-title {
+    color: var(--vg-brown);
+    font-weight: bold;
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+  }
+
+  .empty-store-text {
+    color: #666;
+    font-size: 1rem;
+    max-width: 350px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  .decorative-leaf {
+    color: #8da05e;
+    /* Earthy Green */
+    font-size: 24px;
+  }
+
+  /* Custom Refresh Button */
+  .btn-vg-refresh {
+    background-color: transparent !important;
+    color: var(--vg-brown) !important;
+    border: 1px solid var(--vg-brown) !important;
+    transition: all 0.3s ease;
+  }
+
+  .btn-vg-refresh:hover {
+    background-color: var(--vg-brown) !important;
+    color: white !important;
+  }
+
+  .btn-vg-refresh:active {
+    transform: scale(0.95);
+  }
+
+  /* Optional: Make the icon spin when clicked */
+  .spinning {
+    animation: rotation 1s infinite linear;
+  }
+
+  /* Custom Light Green Alert */
+  .alert-vg-success {
+    background-color: #f0f7ec !important;
+    /* Very light herbal green */
+    color: #3e5c2e !important;
+    /* Deep forest green for text */
+    border: 1px solid #c2d6b3 !important;
+    /* Soft green border */
+    border-left: 5px solid #8da05e !important;
+    /* Thick accent border on the left */
+    font-weight: 500;
+    min-width: 250px;
+  }
+
+  .bg-success-light {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+  }
+
+  #modal-id {
+    line-height: 1.6;
+  }
+
+  /* 1. PAYMENT GATEWAY STYLING */
+  #payment-gate {
+    border: 1px solid var(--border-light) !important;
+    background-color: #fffdf9 !important;
+    /* Slightly warmer than pure white */
+  }
+
+  #txn-id-input {
+    border: 1px solid var(--vg-amber);
+    font-family: monospace;
+    /* Makes transaction IDs easier to read */
+    letter-spacing: 1px;
+  }
+
+  #pay-now-btn {
+    transition: all 0.3s ease;
+    font-weight: 600;
+  }
+
+  /* 2. CART CATEGORY DIVIDERS */
+  .category-divider {
+    background: #fdfaf5;
+    padding: 4px 8px;
+    border-radius: 4px;
+    margin-top: 15px !important;
+  }
+
+  .category-divider span {
+    font-size: 0.7rem !important;
+    color: var(--vg-brown);
+    opacity: 0.8;
+  }
+
+  /* 3. CART ITEM HOVER EFFECT */
+  .cart-item {
+    border-bottom: 1px solid #f0f0f0;
+    transition: background 0.2s;
+  }
+
+  .cart-item:hover {
+    background-color: #fffcf5;
+  }
+
+  /* 4. SUCCESS MODAL ENHANCEMENT */
+  .modal-content {
+    border-radius: 20px !important;
+    background: var(--vg-cream);
+  }
+
+  .bg-success-light {
+    background-color: #f0f7ec;
+    border: 1px dashed #8da05e;
+    display: inline-block;
+  }
+
+  /* 5. RESPONSIVE FIX FOR MOBILE */
+  @media (max-width: 768px) {
+    #cart-sidebar {
+      position: relative;
+      /* Removes sticky on mobile so it doesn't overlap items */
+      top: 0;
+      margin-top: 20px;
+    }
+
+    .item-img {
+      height: 100px;
+      /* Slightly smaller images on mobile to fit 2-column grid better */
+    }
+  }
+
+  #verify-error {
+    transition: color 0.3s ease;
+    font-weight: 500;
+    margin-top: 5px;
+    display: block;
+  }
+
+  /* --- THEMED PAYMENT BUTTONS --- */
+
+  /* Pay Now & Try Opening UPI Buttons */
+  #pay-now-btn,
+  .upi-link-btn {
+    background-color: var(--vg-brown) !important;
+    border-color: var(--vg-brown) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600;
+    transition: all 0.2s ease;
+  }
+
+  .upi-link-btn:active {
+    transform: scale(0.98);
+    filter: brightness(90%);
+  }
+
+  /* Hover effect for all active Brown buttons */
+  #pay-now-btn:hover,
+  .upi-link-btn:hover,
+  #login-btn:hover {
+    background-color: #4d321a !important;
+    /* Slightly darker brown */
+    filter: brightness(110%);
+  }
+
+  /* Place Order Button - Overriding the Amber to Brown */
+  #place-order-btn {
+    background-color: var(--vg-brown) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: bold;
+  }
+
+  /* Ensure Disabled State stays Tan/Grey for all buttons */
+  #place-order-btn:disabled,
+  #place-order-btn.disabled,
+  #pay-now-btn:disabled,
+  .upi-link-btn.disabled {
+    background-color: var(--disabled-tan) !important;
+    border-color: var(--disabled-tan) !important;
+    color: #666 !important;
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  /* Button Verification Feedback (Optional - keeps it brown but adds a green border) */
+  .btn-verified {
+    border: 2px solid #198754 !important;
+  }
+
+  /* Add this to Styles.html */
+  #place-order-btn:not(:disabled) {
+    animation: pulse-brown 1.5s infinite;
+  }
+
+  @keyframes pulse-brown {
+    0% {
+      box-shadow: 0 0 0 0 rgba(99, 65, 33, 0.4);
+    }
+
+    70% {
+      box-shadow: 0 0 0 10px rgba(99, 65, 33, 0);
+    }
+
+    100% {
+      box-shadow: 0 0 0 0 rgba(99, 65, 33, 0);
+    }
+  }
+
+  /* --- NEW: MANUAL UPLOAD ALERT STYLING --- */
+  #manual-upload-section {
+    background-color: #fff5f5;
+    /* Light reddish tint to indicate fallback/warning */
+    border: 1px solid #feb2b2;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 15px;
+    transition: all 0.3s ease-in-out;
+  }
+
+  /* File Input styling to match theme */
+  #screenshot-file {
+    font-size: 0.75rem;
+    border: 1px solid var(--disabled-tan);
+    background-color: white;
+  }
+
+  #screenshot-file:focus {
+    border-color: var(--vg-brown);
+    box-shadow: 0 0 0 0.2rem rgba(99, 65, 33, 0.15);
+  }
+
+  /* Pulse animation for when a file is successfully attached */
+  .file-attached {
+    border: 2px solid var(--vg-amber) !important;
+    animation: pulse-amber 1s ease-in-out;
+  }
+
+  @keyframes pulse-amber {
+    0% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(1.02);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* Success Modal Enhancement for Manual Info */
+  .manual-processing-note {
+    background-color: #fff9e6;
+    border-left: 4px solid var(--vg-amber);
+    padding: 10px;
+    font-size: 0.8rem;
+    color: var(--vg-brown);
+    margin-top: 10px;
+    text-align: left;
+  }
+
+  // logout modal
+  #logoutModal .btn-danger {
+    background-color: #dc3545 !important;
+    border: none !important;
+    transition: transform 0.2s;
+  }
+
+  #logoutModal .btn-danger:hover {
+    background-color: #bb2d3b !important;
+    transform: translateY(-2px);
+  }
+
+  /*Parents login and Guest login*/
+  /* Custom Vidyagrama Toggle Style */
+  #login-form-container .btn-outline-primary {
+    border-color: var(--vg-brown) !important;
+    color: var(--vg-brown) !important;
+  }
+
+  #login-form-container .btn-outline-primary:hover {
+    background-color: var(--vg-brown) !important;
+    color: #fff !important;
+  }
+
+  /* Style for the active/selected tab */
+  #login-form-container .btn-check:checked+.btn-outline-primary {
+    background-color: var(--vg-brown) !important;
+    border-color: var(--vg-brown) !important;
+    color: #fff !important;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Small adjustment to focus state to remove the default blue glow */
+  #login-form-container .btn-check:focus+.btn-outline-primary {
+    box-shadow: 0 0 0 0.25rem rgba(139, 69, 19, 0.25);
+    /* Subtle brown glow */
+  }
+
+  /* Custom Vidyagrama Toggle Style */
+  #login-form-container .btn-outline-primary {
+    border-color: var(--vg-brown) !important;
+    color: var(--vg-brown) !important;
+  }
+
+  #login-form-container .btn-outline-primary:hover {
+    background-color: var(--vg-brown) !important;
+    color: #fff !important;
+  }
+
+  /* Style for the active/selected tab */
+  #login-form-container .btn-check:checked+.btn-outline-primary {
+    background-color: var(--vg-brown) !important;
+    border-color: var(--vg-brown) !important;
+    color: #fff !important;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Small adjustment to focus state to remove the default blue glow */
+  #login-form-container .btn-check:focus+.btn-outline-primary {
+    box-shadow: 0 0 0 0.25rem rgba(139, 69, 19, 0.25);
+    /* Subtle brown glow */
+  }
+
+  .inventory-img {
+    transition: opacity 0.3s ease-in-out;
+    background-color: #f8f9fa;
+    /* Prevents white flashes while loading */
+  }
+
+  /* 1. Improved Image Loading State */
+  .inventory-img {
+    height: 140px !important;
+    /* Forces consistent height for all 68 items */
+    width: 100%;
+    object-fit: cover;
+    background-color: #f0f0f0;
+    display: block;
+    opacity: 0.9;
+    /* Slight transparency until fully loaded if you use the JS onload */
+    transition: opacity 0.4s ease-in;
+  }
+
+  /* 2. Sold Out Overlay (If you remove the stock > 0 filter) */
+  .out-of-stock {
+    position: relative;
+    filter: grayscale(0.8);
+    opacity: 0.7;
+    pointer-events: none;
+    /* Prevents adding to cart */
+  }
+
+  .out-of-stock::after {
+    content: "SOLD OUT";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-15deg);
+    background: rgba(220, 53, 69, 0.9);
+    color: white;
+    padding: 5px 15px;
+    font-weight: bold;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    z-index: 2;
+  }
+
+  /* 3. Ensure the Refresh Icon Spins */
+  .btn-vg-refresh.spinning i {
+    animation: rotation 1s infinite linear;
+    display: inline-block;
+    /* Required for transform/rotation to work */
+  }
+
+  /* 4. Category Header styling for the grid */
+  .grid-category-header {
+    width: 100%;
+    padding: 10px 5px;
+    margin-top: 20px;
+    border-bottom: 2px solid var(--vg-amber);
+    color: var(--vg-brown);
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /*For low stock indication*/
+  /* Container for the stock badges on the image */
+  .stock-badge-container {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    z-index: 2;
+  }
+
+  /* Professional pill-shaped badges */
+  .stock-badge-container .badge {
+    font-size: 0.65rem;
+    padding: 4px 8px;
+    border-radius: 50px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* Subtle label for healthy stock levels */
+  .stock-label {
+    font-size: 0.7rem;
+    color: #666;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border-light);
+  }
+
+  /* Visual cue for low stock cards */
+  .low-stock-border {
+    border-bottom: 3px solid var(--vg-amber) !important;
+  }
+
+  /* Gray out out-of-stock items */
+  .out-of-stock {
+    opacity: 0.7;
+    filter: grayscale(0.5);
+  }
+
+  /*Toggle filter*/
+  /* Pre-order Button Styling */
+  /* Pre-order Button Styling */
+  .btn-outline-primary {
+    border: 1px solid var(--vg-brown) !important;
+    color: var(--vg-brown) !important;
+    background: transparent !important;
+  }
+
+  .btn-outline-primary:hover {
+    background: var(--vg-brown) !important;
+    color: white !important;
+  }
+
+  /* Toggle Switch Color */
+  .form-check-input:checked {
+    background-color: var(--vg-amber) !important;
+    border-color: var(--vg-amber) !important;
+  }
+
+  /* Subtle visual cue for pre-order cards */
+  .pre-order-card {
+    border: 1px dashed #0d6efd !important;
+    background-color: #f0f7ff !important;
+  }
+
+  /*Bar code scanning and adding items to Cart*/
+  .input-group .btn-outline-secondary {
+    border-color: #ced4da;
+    background-color: #f8f9fa;
+    color: var(--vg-brown);
+    /* Matches your Vidyagrama theme */
+  }
+
+  .input-group .btn-outline-secondary:hover {
+    background-color: var(--vg-amber);
+    color: white;
+  }
+
+  /* Flash effect for the cart when an item is added */
+  .cart-updated {
+    animation: flash-border 0.6s ease-out;
+  }
+
+  @keyframes flash-border {
+    0% {
+      box-shadow: 0 0 0px var(--vg-amber);
+    }
+
+    50% {
+      box-shadow: 0 0 15px var(--vg-amber);
+    }
+
+    100% {
+      box-shadow: 0 0 0px var(--vg-amber);
+    }
+  }
+
+  /*Haptic feedback battery optimization*/
+  #scan-toast {
+    position: fixed;
+    bottom: 20%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(40, 167, 69, 0.9);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 30px;
+    z-index: 10000;
+    display: none;
+    font-weight: bold;
+  }
+
+  /*Cash accept*/
+  /* Styling for the Sales Switch */
+  /* --- THEMED CASH & STAFF CONTROLS --- */
+
+  /* --- UPI BUTTON THEME FIX --- */
+
+  /* Targets the specific UPI button class and standard primary buttons */
+  .upi-link-btn,
+  .btn-primary {
+    background-color: var(--vg-brown) !important;
+    border-color: var(--vg-brown) !important;
+    color: white !important;
+    border: none !important;
+    font-weight: 600;
+  }
+
+  /* Hover state for the UPI button */
+  .upi-link-btn:hover,
+  .btn-primary:hover {
+    background-color: #4d321a !important;
+    /* A slightly darker brown */
+    filter: brightness(110%);
+    color: white !important;
+  }
+
+  /* Ensure the pre-order card doesn't use blue dashed lines */
+  .pre-order-card {
+    border: 1px dashed var(--vg-amber) !important;
+    background-color: #fffdf5 !important;
+  }
+
+  /* Replace standard Green with Vidyagrama Amber for Toggle Switches */
+  .form-check-input:checked {
+    background-color: var(--vg-amber) !important;
+    border-color: var(--vg-amber) !important;
+  }
+
+  /* Staff Indicator Card */
+  #sales-toggle-container {
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  #sales-toggle-container .card {
+    border-left: 4px solid var(--vg-amber) !important;
+  }
+
+  /* Force white text inside themed buttons */
+  .btn-primary,
+  .btn-primary * {
+    color: #ffffff !important;
+  }
+
+  /* Semi-transparent background for the icon section to give depth */
+  .bg-black-20 {
+    background-color: rgba(0, 0, 0, 0.15);
+  }
+
+  /* Fix for the sub-text (Digital Scan / Hand collection) */
+  .text-white-50 {
+    color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  /* Ensure button doesn't look flat on hover */
+  .btn-primary:active {
+    background-color: #382413 !important;
+    transform: scale(0.98);
+  }
+</style>
