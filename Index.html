@@ -1,274 +1,197 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
   <base target="_top">
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
   <?!= include('Styles'); ?>
 </head>
-
 <body>
 
-  <div id="custom-toast">
-    <div class="alert alert-vg-success shadow-lg" id="toast-msg"></div>
-  </div>
-
-  <div class="container py-4">
-    <div id="login-section" class="card shadow mx-auto" style="max-width: 400px;">
-      <div class="card-header text-white text-center py-3">
-        <h5 class="mb-0" style="color:white;">Vidyagrama Online Order</h5>
-      </div>
-      <div id="login-form-container" class="card-body p-4 bg-white">
-        <div class="mb-4">
-          <div class="btn-group w-100" role="group">
-            <input type="radio" class="btn-check" name="loginType" id="parentType" checked onclick="toggleUserMode('parent')">
-            <label class="btn btn-outline-primary btn-sm" for="parentType">Parent Login</label>
-            <input type="radio" class="btn-check" name="loginType" id="guestType" onclick="toggleUserMode('guest')">
-            <label class="btn btn-outline-primary btn-sm" for="guestType">Guest Login</label>
-          </div>
-        </div>
-
-        <div id="parent-only-fields">
-          <div class="mb-3">
-            <label class="fw-bold small">Varga</label>
-            <select id="varga" class="form-select" onchange="fetchNames()" disabled>
-                  <option value="">Loading Varga...</option>
-                </select>
-          </div>
-          <div class="mb-3">
-            <label class="fw-bold small">Name</label>
-            <select id="name" class="form-select" disabled>
-                  <option value="">Select Varga first</option>
-                </select>
-          </div>
-        </div>
-
-        <div id="guest-only-fields" style="display:none;">
-          <div class="row g-2 mb-3">
-            <div class="col-7">
-              <label class="fw-bold small">Event<span class="text-danger">*</span></label>
-              <select id="event" class="form-select" required>
-                <option value="">Select Event</option>
-              </select>
-            </div>
-            <div class="col-5">
-              <label class="fw-bold small">Month<span class="text-danger">*</span></label>
-              <select id="guest-month" class="form-select" required>
-                <option value="">Select...</option>
-                <option value="January">Jan</option>
-                <option value="February">Feb</option>
-                <option value="March">Mar</option>
-                <option value="April">Apr</option>
-                <option value="May">May</option>
-                <option value="June">Jun</option>
-                <option value="July">Jul</option>
-                <option value="August">Aug</option>
-                <option value="September">Sep</option>
-                <option value="October">Oct</option>
-                <option value="November">Nov</option>
-                <option value="December">Dec</option>
-              </select>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="fw-bold small">Your Name<span class="text-danger">*</span></label>
-            <input type="text" id="guest-name-input" class="form-control" placeholder="Enter full name" required>
-          </div>
-        </div>
-
-        <div class="mb-3">
-          <label class="fw-bold small">Mobile<span class="text-danger">*</span></label>
-          <input type="tel" id="mobile" class="form-control" placeholder="10 Digit Number" required>
-        </div>
-
-        <div id="guest-association" class="mb-3 form-check" style="display:none;">
-          <input type="checkbox" class="form-check-input" id="future-associate">
-          <label class="form-check-label small text-muted" for="future-associate">
-                Would you like to associate with Vidyagrama in the future?
-              </label>
-        </div>
-
-        <button id="login-btn" class="btn w-100" onclick="doLogin()">Login</button>
-      </div>
+<div class="container py-3 py-md-5">
+  <div class="verification-card mx-auto shadow-lg" style="max-width: 550px;">
+    
+    <div class="header mb-4 text-center">
+      <h1 class="fw-bold">Vinyasa Nilaya Guest Registration</h1>
+      <p class="text-muted">Please complete your digital check-in</p>
     </div>
 
-    <div id="shop-section" class="hidden">
-      <div class="d-flex justify-content-between align-items-center mb-4 bg-white p-3 rounded shadow-sm border">
-        <h6 id="welcome-msg" class="mb-0 fw-bold"></h6>
-        <div class="d-flex align-items-center gap-3">
-          <div class="form-check form-switch mb-0">
-            <input class="form-check-input" type="checkbox" id="shortage-toggle" onchange="filterItems()">
-            <label class="form-check-label small fw-bold" for="shortage-toggle" style="color:var(--vg-brown); cursor:pointer;">
-              Low Stocks Only
+    <div id="registrationForm">
+
+      <!-- Section 1: Identity Verification -->
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-person-badge-fill me-2"></i>1. Identity Verification</h5>
+        
+        <div class="mb-4">
+          <label class="form-label small fw-bold text-muted text-uppercase">Govt ID Type</label>
+          <select id="idType" class="form-select form-select-lg shadow-sm">
+            <option value="Aadhaar" selected>Aadhaar Card</option>
+            <option value="Driving License">Driving License</option>
+            <option value="Voter ID">Voter ID</option>
+          </select>
+        </div>
+
+        <!-- ID Upload Row: Stacks vertically on small screens via CSS/Bootstrap -->
+        <div class="row g-3 mb-4 id-row">
+          <!-- Front Side -->
+          <div class="col-6 id-col">
+            <div class="upload-box shadow-sm" onclick="document.getElementById('idFront').click()">
+              <div id="frontPreview" class="preview-container text-center">
+                <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+                <span class="d-block fw-semibold">Front Side</span>
+                <small class="text-muted d-none d-md-block">Click to upload</small>
+              </div>
+            </div>
+            <input type="file" id="idFront" hidden accept="image/*" onchange="handlePreview(this, 'frontPreview')">
+          </div>
+
+          <!-- Back Side -->
+          <div class="col-6 id-col">
+            <div class="upload-box shadow-sm" onclick="document.getElementById('idBack').click()">
+              <div id="backPreview" class="preview-container text-center">
+                <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+                <span class="d-block fw-semibold">Back Side</span>
+                <small class="text-muted d-none d-md-block">Click to upload</small>
+              </div>
+            </div>
+            <input type="file" id="idBack" hidden accept="image/*" onchange="handlePreview(this, 'backPreview')">
+          </div>
+        </div>
+
+        <button type="button" id="scanBtn" class="btn btn-primary w-100 py-3 fw-bold shadow-sm mb-4" onclick="handleIdScan()">
+          <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+          Start AI Identity Scan
+        </button>
+
+        <!-- Mandatory Verification Section -->
+        <div id="ocrConfirmation" class="p-4 border-0 rounded-4 bg-light shadow-inner d-none">
+          <p class="fw-bold text-success mb-3 small"><i class="bi bi-shield-check me-1"></i> Verify Details</p>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted text-uppercase">Full Name (As per ID)</label>
+            <input type="text" id="name" class="form-control form-control-lg border-0 shadow-sm" required placeholder="Enter Name">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted text-uppercase">ID Number</label>
+            <input type="text" id="idNumber" class="form-control form-control-lg border-0 shadow-sm" required placeholder="Enter ID Number">
+          </div>
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="detailsVerified" required>
+            <label class="form-check-label small fw-semibold" for="detailsVerified">
+              I confirm these details are correct.
             </label>
           </div>
-
-          <button class="btn btn-vg-refresh btn-sm d-flex align-items-center" onclick="refreshData()">
-            <i class="material-icons" style="font-size: 16px; margin-right: 4px;">sync</i> Refresh
-          </button>
-          <button class="btn btn-outline-danger btn-sm" onclick="showLogoutConfirmation()">Logout</button>
         </div>
-      </div>
-
-      <div class="row">
-        <div class="col-lg-8">
-          <div class="row g-2 mb-3">
-            <div class="col-md-4">
-              <div class="input-group">
-                <input type="text" id="search-bar" class="form-control" placeholder="Search Name or SKU..." onkeyup="filterItems()">
-                <button class="btn btn-outline-secondary d-flex align-items-center" onclick="startScanner()" title="Scan Barcode">
-                  <i class="material-icons">photo_camera</i>
-                </button>
-              </div>
-            </div>
-
-            <div id="scanner-wrapper"
-              style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:9999;">
-              <div class="p-3 text-center">
-                <div id="reader"
-                  style="width: 100%; max-width: 400px; margin: auto; border-radius: 10px; overflow: hidden;"></div>
-                <button class="btn btn-danger mt-3" onclick="stopScanner()">Cancel Scan</button>
-              </div>
-            </div>
-            <div class="col-6 col-md-4">
-              <select id="main-cat-filter" class="form-select" onchange="updateSubCategoryDropdown()">
-                <option value="All">All Inventories</option>
-              </select>
-            </div>
-            <div class="col-6 col-md-4">
-              <select id="sub-cat-filter" class="form-select" onchange="filterItems()">
-                <option value="All">All Sub-Categories</option>
-              </select>
-            </div>
+      </section>
+      
+      <!-- Section 2: Travel Details -->
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-airplane-engines-fill me-2"></i>2. Travel Information</h5>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Purpose of Travel</label>
+            <select id="purpose" class="form-select form-select-lg shadow-sm">
+              <option value="Tourism/Leisure">Tourism/Leisure</option>
+              <option value="Business">Business</option>
+              <option value="Study">Study</option>
+              <option value="Work">Work</option>
+              <option value="Volunteering">Volunteering</option>
+              <option value="Other">Other</option>
+            </select>
           </div>
-          <div id="inventory-grid" class="row g-2"></div>
-        </div>
-
-        <div class="col-lg-4">
-          <div id="cart-sidebar">
-            <h6 class="fw-bold mb-3 border-bottom pb-2">Your Cart</h6>
-
-            <div id="sales-toggle-container"></div>
-
-            <div id="cart-list" class="mb-3" style="max-height: 300px; overflow-y: auto;">Empty</div>
-
-            <div class="border-top pt-2">
-              <div class="d-flex justify-content-between small text-muted">
-                <span>Gross Total:</span><span id="gross-val">₹0</span>
-              </div>
-              <div class="d-flex justify-content-between small text-danger">
-                <span id="disc-label">Discount:</span><span id="disc-val">-₹0</span>
-              </div>
-
-              <div class="d-flex justify-content-between small text-muted border-top mt-1 pt-1">
-                <span>Previous Balance:</span><span id="balance-val">₹0</span>
-              </div>
-              <div class="d-flex justify-content-between small text-success">
-                <span>Available Credit:</span><span id="credit-val">-₹0</span>
-              </div>
-              <div class="d-flex justify-content-between h5 mt-2 fw-bold" style="color:var(--vg-brown)">
-                <span>Final Total:</span><span id="final-val">₹0</span>
-              </div>
-            </div>
-
-            <div id="payment-gate" class="mt-3 p-3 border rounded bg-light shadow-sm" style="display:none;">
-              <h6 class="fw-bold small mb-2">
-                <i class="material-icons" style="font-size:16px; vertical-align:middle;">payments</i> Payment
-                Verification
-              </h6>
-
-              <div id="payment-instructions" class="small text-muted mb-2" style="font-size: 0.75rem;">
-                Please pay the final amount to proceed.
-              </div>
-
-              <div id="payment-action-container">
-                <button id="pay-now-btn" class="btn btn-primary btn-sm w-100 mb-2" onclick="initiatePayment()">
-                Pay Now <span id="pay-amt-label">₹0</span>
-              </button>
-              </div>
-
-              <div id="verify-box" style="display:none;">
-                <button id="auto-verify-btn" class="btn btn-success w-100 mb-2 d-flex align-items-center justify-content-center gap-2" onclick="handleVerification()">
-                <i class="material-icons">fact_check</i> Click to Verify Payment
-              </button>
-
-                <div class="input-group input-group-sm mb-1">
-                  <input type="text" id="txn-id-input" class="form-control" placeholder="UTR (Locked)" disabled>
-                  <button id="manual-verify-btn" class="btn btn-secondary" onclick="handleVerification(true)" disabled>Verify ID</button>
-                </div>
-
-                <small id="verify-error" style="font-size: 0.75rem; display: block; margin-top: 5px;"></small>
-              </div>
-
-              <div id="manual-upload-section" class="mt-3 pt-2 border-top" style="display:none;">
-                <p class="fw-bold text-danger mb-1" style="font-size: 0.7rem;">Verification Failed?</p>
-                <p class="text-muted mb-2" style="font-size: 0.65rem;">
-                  If you've already paid, please upload the screenshot.
-                  <strong>Note:</strong> This order will be processed after manual verification.
-                </p>
-                <input type="file" id="screenshot-file" class="form-control form-control-sm" accept="image/*">
-              </div>
-            </div>
-
-            <textarea id="order-notes" class="form-control form-control-sm mt-3" placeholder="Add delivery notes..."></textarea>
-            <button id="place-order-btn" class="btn w-100 mt-3 disabled" onclick="placeOrder()">Place Order</button>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Arriving City</label>
+            <input type="text" id="city" class="form-control form-control-lg shadow-sm" placeholder="e.g. Bengaluru">
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="modal fade" id="successModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content text-center p-4 border-0 shadow">
-        <div style="color: var(--vg-amber);"><i class="material-icons" style="font-size: 60px;">check_circle</i></div>
-        <h4 class="mt-2 fw-bold">Order Successful!</h4>
-        <div class="bg-light p-3 rounded my-3">
-          <div class="small text-muted" id="modal-id"></div>
-          <div class="fw-bold" style="color: var(--vg-brown);" id="modal-saving"></div>
+        <div class="mt-3">
+          <label class="form-label small fw-bold text-muted text-uppercase">WhatsApp Number</label>
+          <input type="tel" id="whatsapp" class="form-control form-control-lg shadow-sm" placeholder="+91 00000 00000">
         </div>
-        <button class="btn btn-success w-100" onclick="closeSuccessModal()">Finish</button>
-      </div>
-    </div>
-  </div>
+      </section>
 
-  <div class="modal fade" id="logoutModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content" style="border-radius:15px; border:none;">
-        <div class="modal-body text-center p-4">
-          <div style="font-size: 50px; margin-bottom: 15px;">👋</div>
-          <h4 style="color:var(--vg-brown);">Ready to Leave?</h4>
-          <p class="text-muted">You will need to sign in again to Place Order.</p>
-          <div class="d-flex gap-2 mt-4">
-            <button type="button" class="btn btn-light flex-grow-1" data-bs-dismiss="modal">Stay</button>
-            <button type="button" class="btn btn-danger flex-grow-1" onclick="confirmLogout()">Logout</button>
+      <!-- Section 3: Emergency Contact -->
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-telephone-plus-fill me-2"></i>3. Emergency Contact</h5>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Contact Person</label>
+            <input type="text" id="emergencyName" class="form-control form-control-lg shadow-sm" placeholder="Full Name">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Emergency Phone</label>
+            <input type="tel" id="emergencyPhone" class="form-control form-control-lg shadow-sm" placeholder="Phone Number">
           </div>
         </div>
-      </div>
-    </div>
-  </div>
+      </section>
 
-  <div class="modal fade" id="payment-modal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content border-0 shadow">
-        <div class="modal-body p-0">
-          <div id="cash-confirm-section"></div>
-
-          <div id="upi-scan-section" style="display:none;">
+      <!-- Section 4: Stay Details -->
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-calendar-check-fill me-2"></i>4. Stay Details</h5>
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Check-in Date</label>
+            <input type="date" id="checkIn" class="form-control form-control-lg shadow-sm" onchange="calculateNights()">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Check-out Date</label>
+            <input type="date" id="checkOut" class="form-control form-control-lg shadow-sm" onchange="calculateNights()">
           </div>
         </div>
+        
+        <div id="stayDuration" class="text-end mb-4 d-none">
+          <span class="badge bg-info text-dark p-2 rounded-3">Total Stay: <span id="nightCount">0</span> Nights</span>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Adults (12+ yrs)</label>
+            <input type="number" id="adults" class="form-control form-control-lg shadow-sm" value="1" min="1">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-bold text-muted text-uppercase">Kids (Below 12)</label>
+            <input type="number" id="kids" class="form-control form-control-lg shadow-sm" value="0" min="0">
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Security Selfie -->
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-person-bounding-box me-2"></i>5. Identity Verification (Selfie)</h5>
+        <div class="upload-box shadow-sm mb-2" onclick="document.getElementById('selfieInput').click()" style="height: 180px; background-color: #ebf8ff; border-color: #bee3f8;">
+          <div id="selfiePreview" class="preview-container text-center">
+            <i class="bi bi-person-circle h1 text-primary"></i>
+            <span class="d-block fw-bold">Take a Selfie</span>
+            <small class="text-muted">Ensure your face is clearly visible</small>
+          </div>
+        </div>
+        <!-- capture="user" forces the FRONT camera on mobile -->
+        <input type="file" id="selfieInput" hidden accept="image/*" capture="user" onchange="handlePreview(this, 'selfiePreview')">
+      </section>
+
+      <!-- Final Consent Card -->
+      <div class="mb-4 p-4 bg-light rounded-4 border-0 shadow-sm">
+        <div class="d-flex align-items-start">
+          <div class="me-3">
+            <input class="form-check-input" type="checkbox" id="consent" required style="width: 1.5em; height: 1.5em; cursor: pointer;">
+          </div>
+          <label class="form-check-label small fw-semibold text-dark" for="consent" style="cursor: pointer; line-height: 1.5;">
+            I hereby confirm that all the information provided above is accurate and complete.
+          </label>
+        </div>
       </div>
+
+      <button id="submitBtn" class="btn btn-success btn-lg w-100 py-3 fw-bold shadow" onclick="finalSubmit()">
+        Submit Registration
+      </button>
+
     </div>
+    <div id="finalStatus" class="mt-3 text-center"></div>
   </div>
+</div>
 
-  <?!= include('Scripts'); ?>
-
+<?!= include('Scripts'); ?>
 </body>
-
 </html>

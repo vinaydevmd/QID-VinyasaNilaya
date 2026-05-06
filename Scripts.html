@@ -1,1445 +1,326 @@
 <script>
-  let currentUser = null, fullInventory = [], cart = [], currentOrderId = "";
-  let verificationRetries = 0;
-  let isGiftOrder = false; 
-  let salesDiscountEnabled = false; 
-  let manualPaymentMode = null;
-  let vkPaymentMode = null; 
-  let manualTxnId = null;
-
-  // Global State for Sales Mode
-
-  const successModal = new bootstrap.Modal(document.getElementById('successModal'));
-
-  function showAlert(message, type = 'success') {
-    const toastContainer = document.getElementById('custom-toast');
-    const toastMsg = document.getElementById('toast-msg');
-    
-    // Reset classes
-    toastMsg.classList.remove('alert-vg-success', 'alert-danger');
-    
-    // Apply class based on type
-    if (type === 'error') {
-      toastMsg.classList.add('alert-danger');
-    } else {
-      toastMsg.classList.add('alert-vg-success');
-    }
-    
-    toastMsg.innerText = message;
-    toastContainer.style.display = 'block';
-    
-    setTimeout(() => {
-      toastContainer.style.display = 'none';
-    }, 3000);
-  }
   
-  window.onload = () => {
-    // 1. Run data fetch first
-    loadInitialData();
-    
-    // 2. Then set up listeners
-    const loginForm = document.getElementById('login-form-container');
-    if (loginForm) {
-      loginForm.addEventListener('keypress', (e) => { 
-        if (e.key === 'Enter') doLogin(); 
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const photoPreview = document.getElementById('photo-preview');
+  const videoContainer = document.getElementById('video-container');
+  let selfieBase64 = null;
+
+  /**
+   * Initialize Camera on page load
+   */
+  async function initCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" } 
       });
+      video.srcObject = stream;
+    } catch (err) {
+      console.error("Camera error: ", err);
+      alert("Please allow camera access to take a selfie for verification.");
     }
-
-    document.addEventListener('change', function(e) {
-      // Check if the change happened on the screenshot file input
-      if (e.target && e.target.id === 'screenshot-file') {
-        const btn = document.getElementById('place-order-btn');
-        const err = document.getElementById('verify-error');
-        
-        // Check if at least one file was actually selected
-        if (e.target.files && e.target.files.length > 0) {
-          // 1. Enable the button
-          btn.classList.remove('disabled');
-          btn.disabled = false;
-          
-          // 2. Ensure it uses your vg-brown theme color
-          btn.style.setProperty("background-color", "var(--vg-brown)", "important");
-          
-          // 3. Update the message to let the user know they are good to go
-          err.style.color = "#E89F22"; // vg-amber
-          err.innerHTML = "<strong>📸 Screenshot attached!</strong> You can now Place Order.";
-        } else {
-          // If they cleared the file, lock the button again
-          btn.classList.add('disabled');
-          btn.disabled = true;
-        }
-      }
-    });
-
-    // Add this inside window.onload in scripts.html
-    const searchBar = document.getElementById('search-bar');
-    if (searchBar) {
-      searchBar.addEventListener('keypress', (e) => {
-        // 13 is the 'Enter' key, which almost all barcode guns send after a scan
-        if (e.key === 'Enter') {
-          const sku = searchBar.value.trim();
-          if (sku.length > 2) {
-            handleScannedItem(sku); // Reusing your existing logic
-            searchBar.value = "";   // CLEAR for next item immediately
-            e.preventDefault();     // Prevent form submission/refresh
-          }
-        }
-      });
-    }
-
-  };
-
-  function loadInitialData() {
-    const v = document.getElementById('varga');
-    const n = document.getElementById('name');
-    v.disabled = true;
-    v.innerHTML = '<option value="">Loading Varga...</option>';
-    n.disabled = true;
-    n.innerHTML = '<option value="">Select Varga first</option>';
-    google.script.run.withSuccessHandler(vargas => {
-      v.innerHTML = '<option value="">Select Varga</option>';
-      vargas.forEach(item => v.add(new Option(item, item)));
-      v.disabled = false;
-    }).getVargas();
-  }
-
-  function fetchNames() {
-    const v = document.getElementById('varga').value;
-    const n = document.getElementById('name');
-    if (!v) { n.innerHTML = '<option value="">Select Varga first</option>'; n.disabled = true; return; }
-    n.disabled = true;
-    n.innerHTML = '<option value="">Loading names...</option>';
-    google.script.run.withSuccessHandler(names => {
-      n.innerHTML = '<option value="">Select Name</option>';
-      names.forEach(item => n.add(new Option(item, item)));
-      n.disabled = false;
-    }).getNamesByVarga(v);
-  }
-  
-  function doLogin() {
-    const m = document.getElementById('mobile').value;
-    const loginBtn = document.getElementById('login-btn');
-    
-    // Basic Mobile Validation
-    if (!m || m.length < 10) return showAlert("Enter a valid mobile number", "error");
-
-    loginBtn.disabled = true;
-    loginBtn.innerHTML = '<span class="loader"></span> Authenticating...';
-
-    if (currentMode === 'guest') {
-      // --- GUEST PATH ---
-      const ev = document.getElementById('event').value;
-      const month = document.getElementById('guest-month').value;
-      const gn = document.getElementById('guest-name-input').value;
-      const asc = document.getElementById('future-associate').checked;
-
-      if (!ev || !month || !gn) {
-        resetLoginBtn(loginBtn);
-        return showAlert("Fill all guest fields", "error");
-      }
-
-      google.script.run.withSuccessHandler(res => {
-        if (res.success) { currentUser = res; startShop(); }
-        else { showAlert("Registration Failed", "error"); resetLoginBtn(loginBtn); }
-      }).registerGuest(ev,month, gn, m, asc);
-
-    } else {
-      // --- PARENT PATH ---
-      const v = document.getElementById('varga').value;
-      const n = document.getElementById('name').value;
-
-      if (!v || !n) {
-        resetLoginBtn(loginBtn);
-        return showAlert("Select Varga and Name", "error");
-      }
-
-      google.script.run.withSuccessHandler(res => {
-        if (res.success) { currentUser = res; startShop(); }
-        else { showAlert("Invalid Login Details", "error"); resetLoginBtn(loginBtn); }
-      }).validateLogin(v, n, m);
-    }
-  }
-
-  // Helper to clean up the button state on failure
-  function resetLoginBtn(btn) {
-    btn.disabled = false;
-    btn.innerText = "Login";
-  }
-  
-  function startShop() {
-    document.getElementById('login-section').classList.add('hidden');
-    document.getElementById('shop-section').classList.remove('hidden');
-    document.getElementById('welcome-msg').innerText = "Namaste, " + currentUser.name;
-    document.getElementById('disc-label').innerText = `Discount (${currentUser.discount}%):`;
-    
-    // NEW: Initialize the cart UI to show Balance and Credit immediately
-    updateCartUI();
-    
-    // Trigger the initial data load
-    refreshData();
-  }
-
-  function refreshData() {
-      const refreshBtn = document.querySelector('.btn-vg-refresh');
-      const icon = refreshBtn ? refreshBtn.querySelector('.material-icons') : null;
-      
-      // --- BUG FIX 1: RESET GLOBAL STATE ---
-      cart = []; 
-
-      // Reset Verification UI
-      const vBox = document.getElementById('verify-box');
-      const gate = document.getElementById('payment-gate');
-      const input = document.getElementById('txn-id-input');
-      const err = document.getElementById('verify-error');
-      const placeOrderBtn = document.getElementById('place-order-btn');
-
-      // --- BUG FIX: HIDE MANUAL UPLOAD SECTION ---
-      const manualUpload = document.getElementById('manual-upload-section');
-      if (manualUpload) {
-        manualUpload.style.display = 'none';
-        verificationRetries = 0;
-      }
-
-      if (vBox) vBox.style.display = 'none';
-      if (gate) gate.style.display = 'none';
-      if (err) err.innerText = '';
-      if (input) {
-        input.value = '';
-        input.disabled = true;
-      }
-      if (placeOrderBtn) {
-        placeOrderBtn.classList.add('disabled');
-        placeOrderBtn.disabled = true;
-      }
-
-      // Update the Sidebar to show empty cart immediately
-      updateCartUI();
-
-      // Start spin animation and disable button
-      if (icon) icon.classList.add('spinning');
-      if (refreshBtn) refreshBtn.disabled = true;
-
-      const grid = document.getElementById('inventory-grid');
-      grid.innerHTML = '<div class="col-12 text-center py-5"><span class="loader" style="border-color:var(--vg-brown); border-bottom-color:transparent;"></span> Loading Items...</div>';
-
-      google.script.run.withSuccessHandler(data => {
-        if (icon) icon.classList.remove('spinning');
-        if (refreshBtn) refreshBtn.disabled = false;
-
-        // 1. CHECK IF STORE IS CLOSED
-        if (!data || data.length === 0) {
-          grid.innerHTML = `
-            <div class="col-12">
-              <div class="empty-store-banner">
-                <div class="empty-store-icon"><i class="material-icons" style="font-size: 80px;">hourglass_empty</i></div>
-                <div class="empty-store-title"><span class="decorative-leaf">🌿</span> Preparation in Progress</div>
-                <div class="empty-store-text">
-                  Please wait till <strong>Vidyagrama</strong> opens the cart.
-                </div>
-              </div>
-            </div>`;
-          
-          document.querySelector('.row.g-2.mb-3').classList.add('hidden');
-          document.getElementById('cart-sidebar').style.opacity = "0.5";
-          document.getElementById('cart-sidebar').style.pointerEvents = "none";
-          return;
-        }
-
-        // 2. NORMAL FLOW
-        document.querySelector('.row.g-2.mb-3').classList.remove('hidden');
-        document.getElementById('cart-sidebar').style.opacity = "1";
-        document.getElementById('cart-sidebar').style.pointerEvents = "auto";
-
-        fullInventory = data;
-        
-        const mainCatFilter = document.getElementById('main-cat-filter');
-        mainCatFilter.innerHTML = '<option value="All">All Inventories</option>';
-        
-        const mainCats = [...new Set(data.map(i => i.mainCategory))].sort();
-        mainCats.forEach(c => {
-          mainCatFilter.add(new Option(toTitleCase(c), c));
-        });
-        
-        updateSubCategoryDropdown(); 
-        if (currentUser) showAlert("Inventory refreshed & Cart reset! 🌿","success");
-
-      }).getInventoryData();
-  }
-  
-  function updateSubCategoryDropdown() {
-    const selectedMain = document.getElementById('main-cat-filter').value;
-    const subCatFilter = document.getElementById('sub-cat-filter');
-    subCatFilter.innerHTML = '<option value="All">All Sub-Categories</option>';
-    const relevantItems = selectedMain === "All" ? fullInventory : fullInventory.filter(i => i.mainCategory === selectedMain);
-    const subCats = [...new Set(relevantItems.map(i => i.subCategory))].filter(c => c).sort();
-    subCats.forEach(sc => subCatFilter.add(new Option(sc, sc)));
-    filterItems();
-  }
-
-   function filterItems() {
-    const searchBar = document.getElementById('search-bar');
-    const mainCatFilter = document.getElementById('main-cat-filter');
-    const subCatFilter = document.getElementById('sub-cat-filter');
-    const shortageToggle = document.getElementById('shortage-toggle');
-
-    // Safety: If elements aren't loaded yet, don't run
-    if (!searchBar || !mainCatFilter || !subCatFilter) return;
-
-    const searchTerm = searchBar.value.toLowerCase();
-    const mainCat = mainCatFilter.value;
-    const subCat = subCatFilter.value;
-    const shortageOnly = shortageToggle ? shortageToggle.checked : false;
-
-    const filtered = fullInventory.filter(i => {
-      // 1. Search Filter
-      const matchesSearch = i.itemName.toLowerCase().includes(searchTerm) || 
-                            (i.sku && i.sku.toLowerCase().includes(searchTerm));
-      
-      // 2. Category Filters
-      const matchesMain = (mainCat === 'All' || i.mainCategory === mainCat);
-      const matchesSub = (subCat === 'All' || i.subCategory === subCat);
-      
-      // 3. Shortage Filter (The Logic Fix)
-      // Convert to number; default to 0 if empty/null
-      const stockLevel = parseFloat(i.stock) || 0; 
-      const isShortageItem = stockLevel <= 5; 
-      
-      const matchesShortage = shortageOnly ? isShortageItem : true;
-      //console.log("Item:", i.itemName, "Stock:", stockLevel, "Is Shortage:", isShortageItem);
-
-      return matchesSearch && matchesMain && matchesSub && matchesShortage;
-    });
-
-    renderInventory(filtered);
-  }
-
-  function renderInventory(items) {
-    const grid = document.getElementById('inventory-grid');
-
-    if (items.length === 0) {
-      grid.innerHTML = '<div class="col-12 text-center py-5 text-muted">No items found matching your filters.</div>';
-      return;
-    }
-
-    grid.innerHTML = items.map(i => {
-      const itemMoq = i.moq || 0.5;
-      const formattedBadge = toTitleCase(i.mainCategory);
-      const stock = parseFloat(i.stock) || 0;
-      
-      let stockStatus = '';
-      let btnText = 'Add';
-      let btnClass = 'btn-success'; // Standard green/brown
-      let cardClass = '';
-
-      if (stock <= 0) {
-        stockStatus = `<span class="badge bg-primary position-absolute top-0 start-0 m-1" style="font-size:0.55rem; z-index:1;">PRE-ORDER</span>`;
-        btnText = 'Pre-order';
-        btnClass = 'btn-outline-primary'; // Different style for pre-order
-        cardClass = 'pre-order-card';
-      } else if (stock <= 5) {
-        stockStatus = `<span class="badge bg-warning text-dark position-absolute top-0 start-0 m-1" style="font-size:0.55rem; z-index:1;">LOW STOCK: ${stock}</span>`;
-        cardClass = 'low-stock-card';
-      } else {
-        stockStatus = `<span class="badge bg-success position-absolute top-0 start-0 m-1" style="font-size:0.55rem; z-index:1; opacity:0.8;">${stock} IN STOCK</span>`;
-      }
-
-      return `
-      <div class="col-6 col-md-4">
-        <div class="item-card p-2 text-center d-flex flex-column shadow-sm h-100 ${cardClass}" style="position:relative;">
-          ${stockStatus}
-          <div class="text-end">
-            <span class="badge bg-light border" style="font-size:0.6rem; color:var(--vg-brown)">
-              ${formattedBadge}
-            </span>
-          </div>
-          <img src="${i.imageUrl}" class="item-img rounded mb-2" onerror="this.src='https://dummyimage.com/150/633a11/ffffff.png&text=Vidyagrama'">
-          <div class="small fw-bold text-truncate">${i.itemName}</div>
-          <div class="text-muted" style="font-size: 0.65rem;">SKU: ${i.sku}</div>
-          <div class="small mb-1" style="color:var(--vg-brown)">₹${parseFloat(i.salePrice).toFixed(2)} / ${i.uom}</div>
-          <div class="mt-auto">
-            <div class="d-flex gap-1">
-              <input type="number" id="qty-${i.sku}" class="form-control form-control-sm" value="${itemMoq}" min="${itemMoq}" step="0.1">
-              <button id="btn-${i.sku}" class="btn btn-sm ${btnClass} w-100" onclick="addToCart('${i.sku}')">
-                ${btnText}
-              </button>
-            </div>
-            <span class="moq-label">Min: ${itemMoq} ${i.uom}</span>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  function addToCart(sku) {
-    const item = fullInventory.find(i => i.sku === sku);
-    const qtyInput = document.getElementById('qty-' + sku);
-    const addBtn = document.getElementById('btn-' + sku);
-    if (!item) return showAlert("Item not found","error");
-    const qty = parseFloat(qtyInput.value);
-    const minAllowed = item.moq || 0.5;
-    if (isNaN(qty) || qty < minAllowed) { showAlert(`Minimum order is ${minAllowed} ${item.uom}`,"error"); return; }
-    
-    addBtn.classList.add('btn-clicked');
-    addBtn.innerText = "Added!";
-    
-    const cartSidebar = document.getElementById('cart-sidebar');
-    cartSidebar.classList.remove('cart-updated');
-    void cartSidebar.offsetWidth; 
-    cartSidebar.classList.add('cart-updated');
-    
-    setTimeout(() => { 
-      addBtn.classList.remove('btn-clicked'); 
-      addBtn.innerText = "Add"; 
-    }, 600);
-    
-    const existingItem = cart.find(cartItem => cartItem.sku === sku);
-    if (existingItem) {
-      existingItem.quantity = parseFloat((existingItem.quantity + qty).toFixed(2));
-      existingItem.fullSubtotal = (existingItem.quantity * parseFloat(existingItem.salePrice)).toFixed(2);
-    } else {
-      cart.push({ ...item, cartId: Date.now() + Math.random(), quantity: qty, fullSubtotal: (qty * parseFloat(item.salePrice)).toFixed(2) });
-    }
-    updateCartUI();
-  }
-
-  function removeFromCart(id) { cart = cart.filter(i => i.cartId !== id); updateCartUI(); }
-  
-
-  function updateCartUI() {
-    console.log("--- updateCartUI Triggered ---");
-    if (!currentUser) return;
-
-    const isSales = (currentUser.varga === "Sales");
-    const toggleContainer = document.getElementById('sales-toggle-container');
-
-    console.log("User Varga:", currentUser.varga);
-    console.log("Is Sales User?:", isSales);
-    console.log("Toggle Container Found?:", toggleContainer !== null);
-        
-    // 1. Staff Controls Injection
-    if (isSales && toggleContainer) {
-      toggleContainer.style.display = 'block';
-        toggleContainer.innerHTML = `
-            <div class="card mb-3 border-0 shadow-sm" style="background: linear-gradient(145deg, #fffdf5, #fff9e6); border-left: 4px solid #ffc107 !important;">
-                <div class="card-body p-2">
-                    <div class="d-flex align-items-center mb-2 text-warning">
-                        <i class="material-icons" style="font-size:16px;">security</i>
-                        <span class="fw-bold ms-1" style="font-size:0.65rem; letter-spacing:1px; text-transform:uppercase;">Staff Controls</span>
-                    </div>
-                    <div class="form-check form-switch mb-1">
-                        <input class="form-check-input" type="checkbox" id="disc-toggle" 
-                               ${salesDiscountEnabled ? 'checked' : ''} onchange="toggleSalesDiscount(this)">
-                        <label class="form-check-label small" for="disc-toggle">Apply Member Discount</label>
-                    </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="gift-toggle" 
-                               ${isGiftOrder ? 'checked' : ''} onchange="toggleGiftOrder(this)">
-                        <label class="form-check-label small text-success fw-bold" for="gift-toggle">Vidyakshetra Gift (₹0)</label>
-                    </div>
-                </div>
-            </div>`;
-    }else if (toggleContainer) {
-    // Hide controls completely for normal users
-    toggleContainer.style.display = 'none';
-    toggleContainer.innerHTML = ''; 
-    }
-
-    if (!isSales) {
-      isGiftOrder = false;
-      salesDiscountEnabled = false;
-    }
-
-    if(isGiftOrder)
-      vkPaymentMode = "Gift";
-    else
-      vkPaymentMode = null;
-
-    const list = document.getElementById('cart-list');
-    const btn = document.getElementById('place-order-btn');
-    const gate = document.getElementById('payment-gate'); 
-
-    // 2. Accounting Values
-    const userCredit = parseFloat(currentUser.credit || 0);
-    const userBalance = parseFloat(currentUser.balance || 0);
-    const balEl = document.getElementById('balance-val');
-    const creEl = document.getElementById('credit-val');
-    if (balEl) balEl.innerText = "₹" + userBalance.toFixed(2);
-    if (creEl) creEl.innerText = "-₹" + userCredit.toFixed(2);
-
-    // --- CRITICAL FIX: Define variables BEFORE they are used ---
-    let gross = 0;
-    let cartHtml = ""; 
-
-    // 3. Empty Cart Check
-    if (cart.length === 0) {
-        if (list) list.innerHTML = '<div class="text-muted small text-center py-3">Your cart is empty</div>';
-        const gVal = document.getElementById('gross-val');
-        const dVal = document.getElementById('disc-val');
-        const fVal = document.getElementById('final-val');
-        if (gVal) gVal.innerText = "₹0.00";
-        if (dVal) dVal.innerText = "-₹0.00";
-        let netAccount = userBalance - userCredit;
-        if (fVal) fVal.innerText = "₹" + (netAccount > 0 ? netAccount : 0).toFixed(2);
-        if (btn) { btn.classList.add('disabled'); btn.disabled = true; }
-        if (gate) gate.style.display = 'none';
-        return;
-    }
-
-    // 4. Grouping & Generation
-    const grouped = cart.reduce((acc, item) => {
-        if (!acc[item.mainCategory]) acc[item.mainCategory] = [];
-        acc[item.mainCategory].push(item);
-        return acc;
-    }, {});
-
-    for (const cat in grouped) {
-        cartHtml += `
-            <div class="category-divider d-flex align-items-center my-2">
-                <span class="fw-bold small text-uppercase" style="color:var(--vg-brown); letter-spacing:1px;">${cat}</span>
-                <div class="flex-grow-1 ms-2" style="border-bottom: 1px dashed #ccc;"></div>
-            </div>`;
-
-        cartHtml += grouped[cat].map(i => {
-            const subtotalNum = parseFloat(i.fullSubtotal);
-            gross += subtotalNum;
-            return `
-                <div class="cart-item d-flex justify-content-between align-items-center py-1 mb-1">
-                    <div style="flex: 1; min-width: 0;">
-                        <div class="fw-bold text-truncate" style="font-size:0.8rem">${i.itemName}</div>
-                        <small class="text-muted" style="font-size:0.7rem">₹${parseFloat(i.salePrice).toFixed(2)} / ${i.uom}</small>
-                    </div>
-                    <div class="d-flex align-items-center">
-                        <div class="input-group input-group-sm me-2" style="width: 80px;">
-                            <button class="btn btn-outline-secondary px-1 py-0" onclick="changeCartQty('${i.sku}', -1)">-</button>
-                            <span class="form-control text-center p-0 d-flex align-items-center justify-content-center" style="font-size: 0.7rem; min-height:24px;">${i.quantity}</span>
-                            <button class="btn btn-outline-secondary px-1 py-0" onclick="changeCartQty('${i.sku}', 1)">+</button>
-                        </div>
-                        <div class="text-end" style="min-width: 55px;"><span class="fw-bold" style="font-size:0.8rem">₹${subtotalNum.toFixed(2)}</span></div>
-                        <i class="material-icons ms-2 remove-btn" style="font-size:16px; cursor:pointer; color:#dc3545;" onclick="removeFromCart(${i.cartId})">cancel</i>
-                    </div>
-                </div>`;
-        }).join('');
-    }
-
-    // Inject the generated HTML into the list
-    if (list) list.innerHTML = cartHtml;
-
-    // 5. Calculations
-    let discAmt = 0;
-    if (isGiftOrder) {
-        discAmt = gross; 
-    } else if (isSales) {
-        discAmt = salesDiscountEnabled ? (gross * (parseFloat(currentUser.discount || 0) / 100)) : 0;
-    } else {
-        discAmt = (gross * (parseFloat(currentUser.discount || 0) / 100));
-    }
-
-    const finalTotal = (gross - discAmt) + userBalance - userCredit;
-    const displayTotal = finalTotal > 0 ? finalTotal : 0;
-
-    const gVal = document.getElementById('gross-val');
-    const dVal = document.getElementById('disc-val');
-    const fVal = document.getElementById('final-val');
-    
-    if (gVal) gVal.innerText = "₹" + gross.toFixed(2);
-    if (dVal) dVal.innerText = "-₹" + discAmt.toFixed(2);
-    if (fVal) fVal.innerText = "₹" + displayTotal.toFixed(2);
-    
-    // 6. Payment Gateway
-    if (gate) {
-        gate.style.display = 'block';
-        const payLabel = document.getElementById('pay-amt-label');
-        if (payLabel) payLabel.innerText = "₹" + displayTotal.toFixed(2);
-        if (typeof updatePaymentButtons === "function") {
-            updatePaymentButtons(isSales, displayTotal);
-        }
-    }
-    
-    // 7. Button Lock/Unlock
-    if (btn) {
-        if (isGiftOrder && displayTotal === 0) {
-            btn.classList.remove('disabled');
-            btn.disabled = false;
-        } else {
-            btn.classList.add('disabled');
-            btn.disabled = true;
-        }
-    }
-}
-  /* Cash order processing*/
-
-function toggleSalesDiscount(el) {
-  salesDiscountEnabled = el.checked;
-  console.log("Sales Discount Toggle:", salesDiscountEnabled);
-  updateCartUI(); // Refresh the prices
-}
-
-function toggleGiftOrder(el) {
-  isGiftOrder = el.checked;
-  console.log("Gift Order Toggle:", isGiftOrder);
-  
-  // Logic: If it's a gift, we usually force the discount toggle to match 
-  // or at least refresh the UI to show ₹0.
-  updateCartUI(); 
-}
-
-function updatePaymentButtons(isSales, amount) {
-  const container = document.getElementById('payment-action-container');
-  if (!container) return;
-
-  if (isSales && amount > 0) {
-    container.innerHTML = `
-      <div class="d-flex flex-column mt-3">
-        <p class="text-center mb-2 fw-bold" style="font-size:0.65rem; letter-spacing:1.5px; color: var(--vg-brown); opacity: 0.7;">
-          SELECT PAYMENT METHOD
-        </p>
-        
-        <button class="btn btn-primary w-100 mb-2 p-0 overflow-hidden" style="min-height: 55px; display: flex;" onclick="showCashConfirmation(${amount})">
-          <div class="d-flex align-items-center justify-content-center bg-black-20 px-3">
-             <i class="material-icons text-white">payments</i>
-          </div>
-          <div class="d-flex flex-column justify-content-center text-start ps-3 py-2">
-            <span class="fw-bold text-white" style="font-size:0.9rem; line-height: 1.1;">Physical Cash</span>
-            <span class="text-white-50" style="font-size:0.65rem; font-weight: normal;">Hand-to-hand collection</span>
-          </div>
-        </button>
-
-        <div class="text-center position-relative my-2">
-          <hr class="m-0" style="border-color: var(--vg-brown); opacity: 0.1;">
-          <span class="position-absolute top-50 start-50 translate-middle px-3" 
-                style="font-size:0.6rem; background: var(--vg-cream); color: var(--vg-brown); font-weight: bold;">OR</span>
-        </div>
-
-        <button class="btn btn-primary w-100 mb-2 p-0 overflow-hidden" style="min-height: 55px; display: flex;" onclick="initiatePayment('UPI')">
-          <div class="d-flex align-items-center justify-content-center bg-black-20 px-3">
-             <i class="material-icons text-white">qr_code_scanner</i>
-          </div>
-          <div class="d-flex flex-column justify-content-center text-start ps-3 py-2">
-            <span class="fw-bold text-white" style="font-size:0.9rem; line-height: 1.1;">UPI Payment</span>
-            <span class="text-white-50" style="font-size:0.65rem; font-weight: normal;">Digital Scan & Verify</span>
-          </div>
-        </button>
-      </div>`;
-  } else if (amount > 0) {
-    container.innerHTML = `
-      <button class="btn btn-primary btn-sm w-100 mb-2" onclick="initiatePayment('UPI')">
-        Pay Now ₹${amount.toFixed(2)}
-      </button>`;
-  }
-}
-
-let paymentModalObj = null; // Declare this at the top of your script
-
-function showCashConfirmation(amount) {
-    const modalElement = document.getElementById('payment-modal');
-    
-    // Create the instance once or reuse it
-    if (!paymentModalObj) {
-        paymentModalObj = new bootstrap.Modal(modalElement);
-    }
-
-    const cashSection = document.getElementById('cash-confirm-section');
-    if (cashSection) {
-        cashSection.innerHTML = `
-            <div class="text-center p-4">
-                <i class="material-icons text-success mb-3" style="font-size:4rem;">check_circle</i>
-                <h4 class="fw-bold">Cash Collection</h4>
-                <p class="text-muted">Receive <span class="fw-bold text-dark">₹${amount.toFixed(2)}</span> from member</p>
-                <button class="btn btn-success w-100 py-3 mt-2 shadow fw-bold" onclick="processCashOrder(${amount})">
-                    CONFIRM & PLACE ORDER
-                </button>
-                <button class="btn btn-link text-muted mt-2 btn-sm" data-bs-dismiss="modal">Cancel</button>
-            </div>`;
-    }
-
-    paymentModalObj.show();
-}
-
-/**
- * Processes cash receipt manually.
- * Bypasses SMS log verification.
- */
- function processCashOrder(amount) {
-
-    // CLOSE THE MODAL MANUALLY
-    const modalElement = document.getElementById('payment-modal');
-    const modalInstance = bootstrap.Modal.getInstance(modalElement); 
-    
-    if (modalInstance) {
-        modalInstance.hide();
-    }
-
-    // 3. CLEAN UP STUCK BACKDROPS (Safety Fix)
-    // Sometimes Bootstrap leaves the 'modal-backdrop' behind if hidden via JS
-    const backdrops = document.querySelectorAll('.modal-backdrop');
-    backdrops.forEach(b => b.remove());
-    document.body.classList.remove('modal-open');
-    document.body.style.overflow = '';
-    document.body.style.paddingRight = '';
-
-    // 4. SHOW LOADING ON MAIN SCREEN
-    const grid = document.getElementById('inventory-grid');
-    if (grid) {
-        grid.innerHTML = `
-            <div class="col-12 text-center py-5 animate__animated animate__fadeIn">
-                <div class="spinner-border text-success" role="status"></div>
-                <h5 class="mt-3 fw-bold">Recording Cash Sale...</h5>
-                <p class="text-muted small">Updating inventory and accounts</p>
-            </div>`;
-    }
-
-    // 5. PLACE THE ORDER
-    // We generate a unique Cash ID for your records
-    const cashTxnId = "CASH-" + new Date().getTime();
-    executeOrderPlacement(cashTxnId, "Cash");
-}
-
-/**
- * Ensures the order is finalized.
- * Note: You should have a function like this that calls your final Google Script order function.
- */
-  function executeOrderPlacement(txnId, mode) {
-    // Assuming you have a function called placeOrder() that handles the Google Sheets write
-    // You might need to adjust parameters based on your existing setup.
-    handleFinalOrder(txnId, mode); 
   }
 
   /**
- * Helper to trigger order from Cash/Gift buttons
- */
-  function handleFinalOrder(txnId, mode) {
-    manualTxnId = txnId;
-    manualPaymentMode = mode;
-    placeOrder(); // Trigger the main placement logic
+   * Capture selfie from video stream
+   */
+  function capture() {
+    const context = canvas.getContext('2d');
+    // Maintain aspect ratio
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    selfieBase64 = canvas.toDataURL('image/jpeg');
+    photoPreview.src = selfieBase64;
+    
+    // UI Swapping
+    photoPreview.classList.remove('d-none');
+    videoContainer.classList.add('d-none');
   }
 
-  /**** Change cart Quantity *****/    
-  function changeCartQty(sku, direction) {
-    const itemInCart = cart.find(i => i.sku === sku); if (!itemInCart) return;
-    const step = 1, minAllowed = itemInCart.moq || 0.5;
-    if (direction === 1) { itemInCart.quantity = parseFloat((itemInCart.quantity + step).toFixed(2)); } 
-    else {
-      if (itemInCart.quantity - step < minAllowed) { showAlert(`Min order is ${minAllowed} ${itemInCart.uom}`,"error"); itemInCart.quantity = minAllowed; } 
-      else { itemInCart.quantity = parseFloat((itemInCart.quantity - step).toFixed(2)); }
-    }
-    itemInCart.fullSubtotal = (itemInCart.quantity * parseFloat(itemInCart.salePrice)).toFixed(2);
-    updateCartUI();
+  /**
+   * Reset capture to take photo again
+   */
+  function retakePhoto() {
+    selfieBase64 = null;
+    photoPreview.classList.add('d-none');
+    videoContainer.classList.remove('d-none');
   }
 
-  async function placeOrder() {
-    const btn = document.getElementById('place-order-btn');
-    const tidInput = document.getElementById('txn-id-input');
-    const fileInput = document.getElementById('screenshot-file');
-    const err = document.getElementById('verify-error');
-
-    // 1. DEFINE VARIABLES
-    let paymentMode =  vkPaymentMode || manualPaymentMode || "Auto-Verified";  
-    let base64Image = null;
-    let txnId = manualTxnId || tidInput ? tidInput.value.trim() : "N/A";
-
-    // 2. CHECK VERIFICATION STATUS
-    // Check if verified color is GREEN
-    const isAutoVerified = (err.style.color === "rgb(25, 135, 84)" || err.style.color === "#198754");
-
-    if (!vkPaymentMode && !isAutoVerified && !manualPaymentMode) {
-      // If not auto-verified AND not a manual Sales action, check for screenshot
-      if (fileInput && fileInput.files.length > 0) {
-        paymentMode = "Manual Screenshot";
-      } else {
-        showAlert("Please verify your transaction or upload a payment screenshot.", "error");
-        return; 
-      }
-    }
-    // 3. UI Feedback
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loader"></span> Saving...';
-
-    try {
-      // 4. Handle Screenshot Conversion
-      if (paymentMode === "Manual Screenshot") {
-        const file = fileInput.files[0];
-        base64Image = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target.result);
-          reader.onerror = (e) => reject("File read error");
-          reader.readAsDataURL(file);
-        });
-      }
-
-      // 5. Prepare Summary
-      const finalTotalStr = document.getElementById('final-val').innerText.replace(/[₹,]/g, '');
-      const savingStr = document.getElementById('disc-val').innerText.replace(/[-₹,]/g, '');
-      
-      const summary = { 
-        customerId: currentUser.id, 
-        customerName: currentUser.name, 
-        customerEmail: currentUser.email,
-        finalTotal: parseFloat(finalTotalStr), 
-        savingAmount: parseFloat(savingStr),
-        notes: document.getElementById('order-notes').value 
-      };
-      // 6. Run Server Script
-      google.script.run
-        .withSuccessHandler(res => {
-
-          // Reset manual flags
-          manualPaymentMode = null;
-          manualTxnId = null;
-
-          /*if (res.success) {
-            const idList = res.orderIds.join(", ");
-            
-            // UPDATED SUCCESS MESSAGE: Notify user of manual check if screenshot was used
-            let successMessage = `<strong>Order Placed!</strong><br>IDs: ${idList}`;
-            if (paymentMode === "Manual Screenshot") {
-              successMessage += `<br><br><small class="text-danger">⚠️ Screenshot uploaded. Your order will be processed after manual verification (2-4 hours).</small>`;
-            }*/
-
-            if (res.success) {
-            const idList = res.orderIds.join(", ");
-            let successMessage = `<strong>Order Placed!</strong><br>IDs: ${idList}`;
-            
-            if (paymentMode === "Manual Screenshot") {
-              successMessage += `<br><br><small class="text-danger">⚠️ Screenshot uploaded. Awaiting verification.</small>`;
-            } else if (paymentMode === "Cash") {
-              successMessage += `<br><br><span class="badge bg-success">Paid via Cash</span>`;
-            } else if (paymentMode === "Gift") {
-              successMessage += `<br><br><span class="badge bg-primary">Vidyakshetra Gift</span>`;
-            }
-
-            onOrderSuccess(successMessage);
-            
-          } else {
-            throw new Error(res.error || "Unknown server error");
-          }
-        })
-        .withFailureHandler(err => {
-          manualPaymentMode = null;
-          manualTxnId = null;
-          showAlert("Failed to save order: " + err, "error");
-          btn.disabled = false;
-          btn.innerHTML = "Place Order";
-        })
-        .finalizeOrderBulk(summary, cart, paymentMode, base64Image, txnId);
-
-    } catch (error) {
-      manualPaymentMode = null;
-      manualTxnId = null;
-      showAlert("Error: " + error.message, "error");
-      btn.disabled = false;
-      btn.innerHTML = "Place Order";
-    }
+  /**
+   * Update ID Input placeholder based on selection
+   */
+  function toggleIDPlaceholder() {
+    const type = document.getElementById('idType').value;
+    document.getElementById('idLabel').innerText = type + " Number";
+    document.getElementById('idNumber').placeholder = "Enter " + type + " Number";
   }
 
-function onOrderSuccess(response) {
-  console.log("Order placed successfully!");
-
-  // 1. Reset Staff toggles to OFF
-  isGiftOrder = false;
-  salesDiscountEnabled = false;
-
-  // 2. Clear the cart (assuming you have a clearCart function)
-  cart = []; 
-
-  document.getElementById('modal-id').innerHTML = response;
-  successModal.show();
-
-  // 4. Refresh UI - This will render toggles as UNCHECKED
-  updateCartUI(); 
-
-}
-
-
- // Replace your old function with this:
-function closeSuccessModal() { 
-  successModal.hide(); 
-  softReset(); // Keeps user logged in
-}
-
-
-  /*Reset completely so that next user can logout with fresh data*/
-  function hardReset() {
-    // 1. Reset Global Data Variables
-    cart = []; 
-    currentUser = null; 
-    fullInventory = []; // Clear the inventory array
-
-    // 2. Reset UI Visibility
-    document.getElementById('shop-section').classList.add('hidden');
-    document.getElementById('login-section').classList.remove('hidden');
-
-    // 3. EXPLICITLY CLEAR GUEST FIELDS
-    const guestNameInput = document.getElementById('guest-name-input');
-    const eventSelect = document.getElementById('event');
-    const associateCheck = document.getElementById('future-associate');
-
-    if (guestNameInput) guestNameInput.value = "";
-    if (eventSelect) eventSelect.selectedIndex = 0;
-    if (associateCheck) associateCheck.checked = false;
-
-    // 2. Clear Input Fields
-    document.getElementById('mobile').value = "";
-    document.getElementById('order-notes').value = "";
-    document.getElementById('search-bar').value = "";
-
-    // 3. Clear UI Containers (The "Fresh Start" fix)
-    document.getElementById('inventory-grid').innerHTML = ""; // Empty the product list
-    document.getElementById('main-cat-filter').innerHTML = '<option value="All">All Inventories</option>';
-    document.getElementById('sub-cat-filter').innerHTML = '<option value="All">All Sub-Categories</option>';
-    document.getElementById('welcome-msg').innerText = "";
-    
-    // 4. Reset Buttons
-    const placeBtn = document.getElementById('place-order-btn');
-    placeBtn.disabled = false; 
-    placeBtn.classList.add('disabled');
-    placeBtn.innerHTML = "Place Order";
-    
-    const loginBtn = document.getElementById('login-btn');
-    loginBtn.disabled = false; 
-    loginBtn.innerText = "Login";
-
-    // 5. Switch Views
-    updateCartUI();
-    document.getElementById('shop-section').classList.add('hidden');
-    document.getElementById('login-section').classList.remove('hidden');
-
-    // Ensure filters and cart are reset to visible for the next user session
-    const filterRow = document.querySelector('.row.g-2.mb-3');
-    if (filterRow) filterRow.classList.remove('hidden');
-    
-    const sidebar = document.getElementById('cart-sidebar');
-    if (sidebar) {
-      sidebar.style.opacity = "1";
-      sidebar.style.pointerEvents = "auto";
-    }
-
-    // 1. Clear the Transaction ID input
-    const tidInput = document.getElementById('txn-id-input');
-    if (tidInput) tidInput.value = "";
-
-    // 2. Reset the Verification Error/Success Message
-    const err = document.getElementById('verify-error');
-    if (err) {
-      err.innerText = "";
-      err.style.color = ""; // Reset color
-    }
-
-    // 3. Re-lock the Place Order button
-    const btn = document.getElementById('place-order-btn');
-    if (btn) {
-      btn.classList.add('disabled');
-      btn.disabled = true;
-      btn.innerHTML = "Place Order";
-      // Reset to theme amber or original color
-      btn.style.setProperty("background-color", "var(--vg-amber)", "important");
-    }
-
-    // 4. Hide the Verification Box and Screenshot section
-    const verifyBox = document.getElementById('verify-box');
-    if (verifyBox) verifyBox.style.display = 'none';
-    
-    const manualSection = document.getElementById('manual-upload-section');
-    if (manualSection) manualSection.style.display = 'none';
-
-    // 5. Clear the file input if it exists
-    const fileInput = document.getElementById('screenshot-file');
-    if (fileInput) fileInput.value = "";
-
-
-    // 6. Reload Varga dropdown for the next user
-    loadInitialData();
-  }
-
-  /*Soft reset, user can still place multiple orders in the same session*/
-  function softReset() {
-    // 1. Clear Data
-    cart = [];
-    
-    // 2. Clear UI Inputs
-    document.getElementById('order-notes').value = "";
-    document.getElementById('search-bar').value = "";
-    if (document.getElementById('txn-id-input')) document.getElementById('txn-id-input').value = "";
-    if (document.getElementById('screenshot-file')) document.getElementById('screenshot-file').value = "";
-    
-    // 3. Reset UI States
-    const err = document.getElementById('verify-error');
-    if (err) { err.innerText = ""; err.style.color = ""; }
-
-    const verifyBox = document.getElementById('verify-box');
-    if (verifyBox) verifyBox.style.display = 'none';
-
-    const manualSection = document.getElementById('manual-upload-section');
-    if (manualSection) manualSection.style.display = 'none';
-
-    // 4. Reset Button
-    const btn = document.getElementById('place-order-btn');
-    if (btn) {
-      btn.classList.add('disabled');
-      btn.disabled = true;
-      btn.innerHTML = "Place Order";
-      btn.style.setProperty("background-color", "var(--vg-amber)", "important");
-    }
-
-    // 5. Update Inventory & Cart UI
-    updateCartUI();
-    filterItems(); // This brings back the full item list
-    
-    // Optional: Auto-focus the search bar for the next scan
-    document.getElementById('search-bar').focus();
-  }
-
-
-  function toTitleCase(str) {
-    if (!str) return "General"; // Fallback for empty categories
-    return str.toString().toLowerCase().split(' ').map(word => {
-      return word.charAt(0).toUpperCase() + word.slice(1);
-    }).join(' ');
-  }
-
-function initiatePayment(method) {
-    if (!currentUser) return;
-
-    const finalValEl = document.getElementById('final-val');
-    if (!finalValEl) return;
-
-    const amount = parseFloat(finalValEl.innerText.replace(/[₹,]/g, '').trim()) || 0;
-    const isSales = (currentUser.varga === "Sales");
-
-    // 1. Handle Gift Orders immediately
-    if (isGiftOrder && amount === 0) {
-        showGiftConfirmation();
-        return;
-    }
-
-    // 2. Clear the main inventory grid for the "Checkout Screen"
-    const grid = document.getElementById('inventory-grid');
-    if (!grid) return;
-
-    if (method === 'CASH' && isSales) {
-        renderCashScreen(grid, amount);
-    } else {
-        renderUPIScreen(grid, amount);
-    }
-
-}
-
-
-function renderCashScreen(container, amount) {
-    container.innerHTML = `
-        <div class="col-12 animate__animated animate__fadeIn">
-            <div class="card border-0 shadow-lg text-center overflow-hidden" style="border-radius: 15px;">
-                <div class="bg-success py-3 text-white">
-                    <i class="material-icons" style="font-size: 3rem;">payments</i>
-                    <h5 class="mb-0 fw-bold">Cash Collection</h5>
-                </div>
-                <div class="card-body p-4">
-                    <p class="text-muted mb-1">Total Amount to Collect</p>
-                    <h2 class="display-5 fw-bold text-dark mb-4">₹${amount.toFixed(2)}</h2>
-                    
-                    <div class="p-3 bg-light rounded mb-4 border">
-                        <p class="small text-muted mb-0">Please verify the currency notes before confirming.</p>
-                    </div>
-
-                    <button class="btn btn-success btn-lg w-100 py-3 fw-bold shadow" 
-                            onclick="processCashOrder(${amount})">
-                        CONFIRM CASH RECEIVED
-                    </button>
-                    
-                    <button class="btn btn-link text-muted mt-3" onclick="filterItems()">
-                        <i class="material-icons align-middle" style="font-size:18px;">arrow_back</i> Cancel & Go Back
-                    </button>
-                </div>
-            </div>
-        </div>`;
-}
-
-function renderUPIScreen(container, amount) {
-  if (!container) return;
-  
-  // Safety check for amount
-  const validAmount = parseFloat(amount) || 0;
-  const upiId = "gokripa@icici";
-  const amountFixed = validAmount.toFixed(2);
-  const upiUrl = "upi://pay?pa=" + upiId + "&pn=Vidyakshetra&am=" + amountFixed + "&cu=INR";
-  const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=" + encodeURIComponent(upiUrl);
-
-  // Using a cleaner template literal structure
-  container.innerHTML = `
-        <div class="col-12 text-center py-4 bg-white shadow rounded border-top border-warning border-4">
-          <h5 class="fw-bold mb-3" style="color: var(--vg-brown);">Complete Your Payment</h5>
-          
-          <div class="mb-3">
-            <img src="${qrUrl}" class="img-fluid border p-2 bg-light" style="max-width: 200px;" alt="Scan to Pay">
-            <p class="small text-muted mt-2">Scan this QR code with any UPI app (GPay, PhonePe, etc.)</p>
-          </div>
-
-          <div class="px-4">
-            <div class="alert alert-secondary py-2 mb-3">
-              <small class="d-block text-muted">Amount to Pay:</small>
-              <strong class="h4" style="color: var(--vg-brown);">₹${amountFixed}</strong>
-            </div>
-
-            <p class="small text-muted mb-2">Or copy the UPI ID below:</p>
-            <div class="input-group mb-3">
-              <input type="text" id="upi-copy-target" class="form-control text-center bg-light" value="${upiId}" readonly>
-              <button class="btn" style="background-color: var(--vg-brown); color: white;" onclick="copyUpiId()">Copy ID</button>
-            </div>
-            
-            <div class="d-grid gap-2 mt-4">
-              <button class="btn btn-outline-secondary btn-sm" onclick="filterItems()">Back to Items</button>
-            </div>
-          </div>
-        </div>`;
-
-  // Verification sidebar logic
-  const verifyBox = document.getElementById('verify-box');
-  if (verifyBox) {
-    verifyBox.style.display = 'block';
-  }
-}
-
-  // Add this function to your <script> to make the Copy button work
-  function copyUpiId() {
-    const copyText = document.getElementById("upi-copy-target");
-    copyText.select();
-    copyText.setSelectionRange(0, 99999); // For mobile
-    navigator.clipboard.writeText(copyText.value);
-    
-    showAlert("UPI ID Copied! Paste it in your Payment App.", "success");
-  }
-
-  /*function verifyTxn() {
-    const tid = document.getElementById('txn-id-input').value.trim();
-    const amountStr = document.getElementById('final-val').innerText.replace(/[₹,]/g, '');
-    const amount = parseFloat(amountStr);
-    const err = document.getElementById('verify-error');
-    const btn = document.getElementById('place-order-btn');
-    const uploadSection = document.getElementById('manual-upload-section');
-
-    const userName = currentUser ? currentUser.name : "Unknown Guest";
-
-    // Reset UI
-    btn.classList.add('disabled');
-    btn.disabled = true;
-    uploadSection.style.display = 'none';
-
-    if (tid.length < 12) {
-      err.style.color = "red";
-      err.innerText = "Please enter the full 12-digit UTR.";
+  /**
+   * DigiLocker Authorization Flow
+   */
+  function startDigiLocker() {
+    const idNum = document.getElementById('idNumber').value;
+    if (!idNum) {
+      alert("Please enter your ID number before verifying.");
       return;
     }
 
-    err.style.color = "#0d6efd";
-    err.innerText = "Verifying with bank logs...";
+    google.script.run.withSuccessHandler(function(url) {
+      if (url && url !== "#") {
+        const authWin = window.open(url, "_blank", "width=600,height=700");
+      } else {
+        // Simulation mode
+        alert("DigiLocker connection simulated successfully.");
+      }
+      
+      // Update UI to show verification success
+      document.getElementById('verifyBadge').classList.remove('d-none');
+    }).getDigiLockerLoginUrl();
+  }
+
+  /**
+   * Final Submission to Google Sheets/Drive
+   */
+  function submitData() {
+    const btn = document.getElementById('submitBtn');
+    const data = {
+      name: document.getElementById('name').value,
+      phone: document.getElementById('phone').value,
+      arrival: document.getElementById('arrival').value,
+      idType: document.getElementById('idType').value,
+      idNumber: document.getElementById('idNumber').value,
+      terms: document.getElementById('terms').checked,
+      selfie: selfieBase64
+    };
+
+    // Validation
+    if (!data.name || !data.idNumber || !selfieBase64) {
+      alert("Please complete all fields, verify your ID, and capture a selfie.");
+      return;
+    }
+    if (!data.terms) {
+      alert("Please accept the Terms and Conditions.");
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
 
     google.script.run
       .withSuccessHandler(res => {
-        if (res.status === "SUCCESS") {
-          err.style.color = "#198754"; 
-          err.innerHTML = "<strong>✅ Verified!</strong> " + res.message;
-          
-          btn.classList.remove('disabled');
-          btn.disabled = false;
-          btn.style.setProperty("background-color", "var(--vg-brown)", "important");
+        if (res.success) {
+          document.getElementById('formStep').innerHTML = `
+            <div class="text-center py-4">
+              <h3 class="text-success">✓ Success!</h3>
+              <p>${res.message}</p>
+              <button class="btn btn-outline-primary btn-sm" onclick="window.location.reload()">New Registration</button>
+            </div>`;
         } else {
-          err.style.color = "#dc3545";
-          err.innerText = "❌ " + res.message;
-          
-          // SHOW the upload section when verification fails
-          uploadSection.style.display = 'block';
+          alert("Error: " + res.message);
+          btn.disabled = false;
+          btn.innerHTML = "Complete Booking";
         }
       })
-      .withFailureHandler(msg => {
-        err.style.color = "red";
-        err.innerText = "System Error. Please upload screenshot instead.";
-        uploadSection.style.display = 'block';
-      })
-      .checkPaymentInLogs(tid, amount,userName);
-  }*/
-
-  /***********************Logout Model **********************************/
-
-  // Global variable for the modal instance
-  const logoutModal = new bootstrap.Modal(document.getElementById('logoutModal'));
-
-  function showLogoutConfirmation() {
-    logoutModal.show();
+      .processSubmission(data);
   }
 
-  function confirmLogout() {
-    // 1. Hide the modal
-    logoutModal.hide();
+  async function extractAadhaarDetails() {
+  const fileInput = document.getElementById('aadhaarFront');
+  if (!fileInput.files[0]) return alert("Please select the Front of your Aadhaar first.");
 
-    // 2. Log activity (using the name from your currentUser object)
-    if (currentUser) {
-      google.script.run.logActivity(
-        currentUser.name, 
-        "LOGOUT", 
-        "User manually signed out", 
-        "Shop_UI"
-      );
-    }
-
-    // 3. Show a friendly toast
-    showAlert("Logging out... Namaste! 🌿", "success");
-
-    // 4. Trigger your existing cleanup
-    setTimeout(() => {
-      hardReset();
-    }, 800);
-  }
-
-
-  /*For guest mode and parent mode*/
-  let currentMode = 'parent';
-  /* Toggle UI between guest and parent mode*/
-  function toggleUserMode(mode) {
-    currentMode = mode;
-    const isGuest = (mode === 'guest');
-    
-    // 1. Toggle visibility
-    document.getElementById('parent-only-fields').style.display = isGuest ? 'none' : 'block';
-    document.getElementById('guest-only-fields').style.display = isGuest ? 'block' : 'none';
-    document.getElementById('guest-association').style.display = isGuest ? 'block' : 'none';
-    
-    // 2. CLEAR PREVIOUS DATA
-    // Reset shared fields
-    document.getElementById('mobile').value = "";
-    
-    // Reset Parent fields (if they exist in your DOM)
-    const vargaSelect = document.getElementById('varga');
-    const nameSelect = document.getElementById('name');
-    if (vargaSelect) vargaSelect.selectedIndex = 0;
-    if (nameSelect) {
-      nameSelect.innerHTML = '<option value="">Select Varga first</option>';
-      nameSelect.disabled = true;
-    }
-
-    // Reset Guest fields
-    document.getElementById('guest-name-input').value = "";
-    const eventSelect = document.getElementById('event');
-    if (eventSelect) eventSelect.selectedIndex = 0;
-    
-    // Reset Checkbox
-    document.getElementById('future-associate').checked = false;
-
-    // 3. Load events if switching to Guest mode
-    if (isGuest) {
-      loadGuestEvents();
-    }
-  }
-
-  /* Load guest events*/
-  function loadGuestEvents() {
-    const eventSelect = document.getElementById('event');
-    eventSelect.innerHTML = '<option value="">Loading events...</option>';
-    
-    google.script.run.withSuccessHandler(function(events) {
-      eventSelect.innerHTML = '<option value="">Select Event</option>';
-      events.forEach(function(ev) {
-        const opt = document.createElement('option');
-        opt.value = ev;
-        opt.textContent = ev;
-        eventSelect.appendChild(opt);
-      });
-    }).getEventList(); // This needs to be added to your Code.gs
-  }
-
-  /******************************* Adding Items to Cart via Barcode Scanner *************************************/
-let html5QrCode;
-let isScanning = false;
-let audioCtx;
-
-async function startScanner() {
-  if (isScanning) return;
-  isScanning = true;
-
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-
-  document.getElementById('scanner-wrapper').style.display = 'block';
-
-  if (html5QrCode) {
-    try { await html5QrCode.clear(); } catch(e) {}
-  }
-
-  html5QrCode = new Html5Qrcode("reader");
-
-  const qrConfig = { 
-    fps: 30, 
-    qrbox: { width: 280, height: 120 }, 
-    aspectRatio: 1.777778,
-    formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
-  };
-
-  html5QrCode.start(
-    { facingMode: "environment" },  
-    qrConfig, 
-    (txt) => {
-      if (txt.length > 2) { 
-        handleScannedItem(txt); // Calls our new logic above
-        stopScanner(); 
-        isScanning = false; 
-      }
-    }
-  ).catch(err => {
-    isScanning = false;
-    console.error("Camera Error:", err);
-    alert("Camera could not start. Please check permissions.");
-    document.getElementById('scanner-wrapper').style.display = 'none';
-  });
-}
-
-function handleScannedItem(sku) {
-  const item = fullInventory.find(i => i.sku === sku);
-
-  if (item) {
-    const minQty = item.moq || 0.5;
-    const qtyInput = document.getElementById('qty-' + sku);
-
-    // Physical Feedback
-    if ("vibrate" in navigator) navigator.vibrate(100); 
-    playBeep();
-
-    if (qtyInput) {
-      qtyInput.value = minQty;
-      addToCart(sku);
-    } else {
-      addDirectlyToCart(item, minQty);
-    }
-
-    // PROFESSIONAL TOUCH: Clear the search bar every time an item is found
-    // This ensures that even if you scanned via camera, the search text is wiped
-    const searchBar = document.getElementById('search-bar');
-    if (searchBar) {
-      searchBar.value = "";
-      filterItems(); // Reset the grid to show all items again
-    }
-    
-    showAlert(`Added ${minQty} ${item.uom || ''} of ${item.itemName}`, "success");
-  } else {
-    // Double vibrate on error
-    if ("vibrate" in navigator) navigator.vibrate([50, 100, 50]);
-    showAlert("Barcode not recognized: " + sku, "error");
-    
-    // Clear search even on error so they can try again
-    const searchBar = document.getElementById('search-bar');
-    if (searchBar) searchBar.value = "";
-  }
-}
-
-// Helper for when the item isn't rendered in the current filtered list
-function addDirectlyToCart(item, qty) {
-  const existingItem = cart.find(cartItem => cartItem.sku === item.sku);
-  if (existingItem) {
-    existingItem.quantity = parseFloat((existingItem.quantity + qty).toFixed(2));
-    existingItem.fullSubtotal = (existingItem.quantity * parseFloat(existingItem.salePrice)).toFixed(2);
-  } else {
-    cart.push({ 
-      ...item, 
-      cartId: Date.now() + Math.random(), 
-      quantity: qty, 
-      fullSubtotal: (qty * parseFloat(item.salePrice)).toFixed(2) 
-    });
-  }
-  updateCartUI();
+  const btn = document.querySelector('button[onclick="extractAadhaarDetails()"]');
+  btn.innerText = "Scanning...";
   
-  // Animate the sidebar to show something happened
-  const cartSidebar = document.getElementById('cart-sidebar');
-  cartSidebar.classList.add('cart-updated');
-  setTimeout(() => cartSidebar.classList.remove('cart-updated'), 600);
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const base64 = e.target.result;
+    
+    google.script.run.withSuccessHandler(rawText => {
+      google.script.run.withSuccessHandler(result => {
+        // Auto-fill the form fields
+        if(result.name) document.getElementById('name').value = result.name;
+        if(result.idNumber) document.getElementById('idNumber').value = result.idNumber;
+        
+        btn.innerText = "Scan Complete";
+        alert("Details extracted! Please verify them for accuracy.");
+      }).parseAadhaarData(rawText);
+    }).extractTextFromImage(base64);
+  };
+  reader.readAsDataURL(fileInput.files[0]);
 }
 
-function stopScanner() {
-  if (html5QrCode) {
-    html5QrCode.stop().then(() => {
-      html5QrCode.clear();
-      document.getElementById('scanner-wrapper').style.display = 'none';
-      isScanning = false;
-    }).catch(err => console.error("Stop Error:", err));
+function handleIdScan() {
+  const frontFile = document.getElementById('idFront').files[0];
+  if (!frontFile) {
+    alert("Please select the front side of your ID.");
+    return;
   }
-}
 
-function playBeep() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-  gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
-}
+  // UI Feedback
+  const btn = document.getElementById('scanBtn');
+  const spinner = document.getElementById('scanSpinner');
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
 
-/*Auto verify transactions*/
-  async function handleVerification(isManual = false) {
-    const amountStr = document.getElementById('final-val').innerText.replace(/[₹,]/g, '').trim();
-    const amount = parseFloat(amountStr);
-    const err = document.getElementById('verify-error');
-    const input = document.getElementById('txn-id-input');
-    const manualBtn = document.getElementById('manual-verify-btn');
-    const autoBtn = document.getElementById('auto-verify-btn');
-    const placeOrderBtn = document.getElementById('place-order-btn');
-
-    // This is the line that was likely missing or failing:
-    const manualUpload = document.getElementById('manual-upload-section');
-
-    // UI State: Loading
-    err.style.color = "blue";
-    err.innerText = "Scanning bank logs...";
-    autoBtn.disabled = true;
-
-    // Get last 4 digits only if we are in manual mode
-    const last4 = isManual ? input.value.trim().slice(-4) : "";
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const base64Data = e.target.result; // This is the full DataURL
 
     google.script.run
-      .withSuccessHandler((res) => {
-        autoBtn.disabled = false;
+      .withSuccessHandler(function(res) {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
 
-        if (res.status === "SUCCESS") {
-          err.style.color = "#198754";
-          err.innerHTML = `<strong>✅ ${res.message}</strong>`;
-          input.value = res.txnId; // Fill the full UTR
-          input.disabled = true;
-          
-          // Enable Final Order Button
-          placeOrderBtn.classList.remove('disabled');
-          placeOrderBtn.disabled = false;
-          placeOrderBtn.style.backgroundColor = "var(--vg-brown)";
-        } 
-        else if (res.status === "DUPLICATES") {
-          err.style.color = "#fd7e14";
-          err.innerText = res.message;
-          
-          // UNLOCK the input field
-          input.disabled = false;
-          input.placeholder = "Enter last 4 digits";
-          input.focus();
-          manualBtn.disabled = false;
-          manualBtn.classList.replace('btn-secondary', 'btn-warning');
-        } 
-        else {
-          // Increment retry counter on "NOT_FOUND" or "ERROR"
-          verificationRetries++;
-          
-          err.style.color = "#dc3545";
-          err.innerText = res.message;
-
-          // Trigger manual upload backup after 3 failed tries
-          if (verificationRetries >= 3 && manualUpload) {
-            manualUpload.style.display = 'block';
-            err.innerText += " (Check failed 3 times. You may upload a screenshot below.)";
-          }
+        if (res && res.name !== "Not found") {
+          document.getElementById('ocrConfirmation').classList.remove('d-none');
+          document.getElementById('name').value = res.name;
+          document.getElementById('idNumber').value = res.idNumber;
+          alert("ID read successfully! Please verify the details below.");
+        } else {
+          alert("Could not read details clearly. Please try a clearer photo or enter details manually.");
+          document.getElementById('ocrConfirmation').classList.remove('d-none');
         }
       })
-      .withFailureHandler(e => {
-        autoBtn.disabled = false;
-        err.innerText = "System Error. Please try again.";
+      .withFailureHandler(function(err) {
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        
+        if (err.message.includes("rate limit exceeded")) {
+          alert("The ID scanner is currently busy. Please type your Name and ID Number manually below.");
+          // Force show the manual entry box
+          document.getElementById('ocrConfirmation').classList.remove('d-none');
+        } else {
+          alert("Scan failed: " + err);
+        }
       })
-      .autoCheckPayment(amount, currentUser.name, last4);
+      .executeOcrFlow(base64Data); // Calling a combined wrapper function
+  };
+  reader.readAsDataURL(frontFile);
+}
+
+/*function handleIdScan() {
+  const frontFile = document.getElementById('idFront').files[0];
+  if (!frontFile) return alert("Please capture or select the ID front side.");
+  
+  const btn = document.getElementById('scanBtn');
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Uploading & Scanning...';
+  btn.disabled = true;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        // ... (your existing success logic)
+        btn.innerHTML = 'Scan & Verify Details';
+        btn.disabled = false;
+      })
+      .withFailureHandler(function(err) {
+        // ... (your existing failure logic)
+        btn.disabled = false;
+      })
+      .executeOcrFlow(e.target.result);
+  };
+  reader.readAsDataURL(frontFile);
+}*/
+
+function handlePreview(input, previewId) {
+  const container = document.getElementById(previewId);
+  const file = input.files[0];
+  
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      container.innerHTML = `<img src="${e.target.result}" class="preview-image">
+                             <p class="small text-success mt-2 mb-0">Image Loaded ✓</p>`;
+    };
+    reader.readAsDataURL(file);
   }
+}
+
+// 1. Success Handler for AI Scan
+function handleIdScan() {
+  const frontFile = document.getElementById('idFront').files[0];
+  if (!frontFile) return alert("Please upload/capture ID Front first.");
+
+  const btn = document.getElementById('scanBtn');
+  const spinner = document.getElementById('scanSpinner');
+  
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    google.script.run
+      .withSuccessHandler(function(res) {
+        // Show the verification box
+        document.getElementById('ocrConfirmation').classList.remove('d-none');
+        
+        // Fill fields (allowing user to edit if "Not found")
+        document.getElementById('name').value = (res.name !== "Not found") ? res.name : "";
+        document.getElementById('idNumber').value = res.idNumber || "";
+        
+        btn.disabled = false;
+        spinner.classList.add('d-none');
+        btn.innerText = "Scan Complete ✓";
+        btn.className = "btn btn-success w-100 mb-3";
+      })
+      .executeOcrFlow(e.target.result);
+  };
+  reader.readAsDataURL(frontFile);
+}
+
+
+function calculateNights() {
+  const checkIn = document.getElementById('checkIn').value;
+  const checkOut = document.getElementById('checkOut').value;
+  const display = document.getElementById('stayDuration');
+  const countSpan = document.getElementById('nightCount');
+
+  if (checkIn && checkOut) {
+    const d1 = new Date(checkIn);
+    const d2 = new Date(checkOut);
     
+    // Calculate difference in milliseconds and convert to days
+    const diffTime = d2 - d1;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 0) {
+      countSpan.innerText = diffDays;
+      display.classList.remove('d-none');
+    } else {
+      display.classList.add('d-none');
+      if (diffDays <= 0 && checkOut !== "") {
+        alert("Check-out date must be after Check-in date.");
+        document.getElementById('checkOut').value = "";
+      }
+    }
+  }
+}
+
+function finalSubmit() {
+  const formData = {
+    name: document.getElementById('name').value,
+    idNumber: document.getElementById('idNumber').value,
+    checkIn: document.getElementById('checkIn').value,
+    checkOut: document.getElementById('checkOut').value,
+    adults: document.getElementById('adults').value,
+    kids: document.getElementById('kids').value,
+    whatsapp: document.getElementById('whatsapp').value,
+    // Add other fields...
+  };
+  
+  // Basic validation
+  if (!formData.checkIn || !formData.checkOut || !document.getElementById('selfieInput').files[0]) {
+    alert("Please complete all sections, including the dates and your selfie.");
+    return;
+  }
+
+  // Run your google.script.run.processSubmission(formData)...
+}
+
+  // Start the camera immediately
+  window.onload = initCamera;
+
 </script>
