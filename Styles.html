@@ -198,45 +198,43 @@
   }
 
   .upload-box {
-    border: 2px dashed #dee2e6;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    background-color: #f8f9fa;
-    height: 140px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+  cursor: pointer;
+  background: #ffffff;
+  border: 2px dashed #dee2e6;
+  border-radius: 12px;
+  overflow: hidden; /* CRITICAL: Clips anything outside the box */
+  position: relative;
+  aspect-ratio: 4 / 3; /* Maintains a consistent shape on all screens */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
 
-  .upload-box:hover {
-    border-color: #0d6efd;
-    background-color: #e9ecef;
-  }
+.upload-box:hover {
+  border-color: #0d6efd;
+  background-color: #f8f9fa;
+}
 
-  .preview-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
+/* This targets the dynamic image created by your JS */
+.preview-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* Fits image inside without distortion, cropping if needed */
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 10px;
+}
 
-  .preview-container i {
-    font-size: 2rem;
-    color: #6c757d;
-  }
-
-  .preview-container span {
-    font-weight: 600;
-    margin-top: 5px;
-  }
-
-  .preview-image {
-    max-height: 100px;
-    border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  }
+.preview-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
 
   /* Responsive tweaks */
   @media (max-width: 576px) {

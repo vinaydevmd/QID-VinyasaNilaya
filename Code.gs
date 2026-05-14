@@ -40,8 +40,75 @@ function handleDigiLockerCallback(authCode) {
   return HtmlService.createHtmlOutput("<script>window.close();</script><h3 style='font-family:sans-serif; text-align:center; margin-top:20%; color:#059669;'>✓ Verified. You may close this window.</h3>");
 }
 
-
 function processSubmission(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) throw new Error("Sheet not found.");
+
+  const now = new Date();
+  
+  // 1. Determine Status & Integer Row Number
+  const isUpdate = !!data.rowNumber;
+  const checkInStatus = isUpdate ? "Returning Guest - Updated" : "New Guest - Verified";
+  const rowTarget = isUpdate ? parseInt(data.rowNumber, 10) : null;
+
+  // 2. Calculate SlNo
+  let finalSlNo = data.slNo; 
+  if (!isUpdate) {
+    const lastRow = sheet.getLastRow();
+    finalSlNo = 1;
+    if (lastRow > 1) {
+      const lastVal = sheet.getRange(lastRow, 1).getValue();
+      finalSlNo = (typeof lastVal === 'number') ? lastVal + 1 : lastRow;
+    }
+  }
+
+  // 3. ImageKit Upload
+  const datePrefix = `${now.getFullYear()}_${data.idNumber}_${String(finalSlNo).padStart(2, '0')}`;
+  const selfieUrl = uploadToImageKit(data.selfieBase64, `${datePrefix}_Selfie`);
+
+  // 4. Construct Full 20-Column Row (Must be exactly 20 elements)
+  const rowData = new Array(20).fill(""); // Initialize empty array of 20
+  
+  rowData[0] = finalSlNo;                 // Col 1
+  rowData[1] = now;                       // Col 2
+  rowData[2] = data.name || "";           // Col 3
+  rowData[3] = data.idType || "";         // Col 4
+  rowData[4] = data.idNumber || "";       // Col 5
+  rowData[5] = data.whatsapp || "";       // Col 6
+  rowData[6] = data.purpose || "";        // Col 7
+  rowData[7] = data.city || "";           // Col 8
+  rowData[8] = data.emergencyName || "";  // Col 9
+  rowData[9] = data.emergencyPhone || ""; // Col 10
+  // Cols 11-15 (Stay Details) remain empty strings ""
+  rowData[15] = data.idFrontUrl || "";    // Col 16
+  rowData[16] = data.idBackUrl || "";     // Col 17
+  rowData[17] = selfieUrl;                // Col 18
+  rowData[18] = "Yes";                    // Col 19
+  rowData[19] = checkInStatus;            // Col 20
+
+  // 5. Save to Sheet
+  if (isUpdate && rowTarget) {
+    // PRESERVE OLD IDs: Fetch current values from sheet
+    const existingValues = sheet.getRange(rowTarget, 1, 1, 20).getValues()[0];
+    
+    // If current submission has no new ID URL, use the one already in the sheet
+    if (!rowData[15]) rowData[15] = existingValues[15]; 
+    if (!rowData[16]) rowData[16] = existingValues[16]; 
+
+    sheet.getRange(rowTarget, 1, 1, 20).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+  
+  return { 
+    success: true, 
+    slNo: finalSlNo, 
+    status: checkInStatus 
+  };
+}
+
+/*function processSubmission(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) throw new Error("Sheet not found.");
@@ -103,7 +170,7 @@ function processSubmission(data) {
   sheet.appendRow(formData);
   
   return { success: true, slNo: finalSlNo };
-}
+}*/
 
 /**
  * Helper: Uploads Base64 string to ImageKit
@@ -236,31 +303,304 @@ function parseAadhaarData(rawText) {
     raw: rawText 
   };
 }
+/******** Parse Voter ID *********************/
+function parseVoterIDData(rawText) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+  
+  // EPIC Pattern: 3 Letters followed by 7 Digits (e.g., WBH4159588)
+  const idMatch = rawText.match(/[A-Z]{3}\d{7}/i);
+  
+  let detectedName = "Not found";
+  
+  // 1. PRIMARY SEARCH: Look specifically for the "Elector's Name" label
+  for (let i = 0; i < lines.length; i++) {
+    const upperLine = lines[i].toUpperCase();
+    if (upperLine.includes("ELECTOR'S NAME") || upperLine.includes("ELECTORS NAME")) {
+      // Extract everything after the colon or dash
+      let namePart = lines[i].split(/[:|-]/).pop().trim();
+      
+      // If the name is on the NEXT line instead of the same line
+      if (namePart.length < 3 && i + 1 < lines.length) {
+        namePart = lines[i+1].trim();
+      }
+      
+      detectedName = namePart.replace(/[^\x00-\x7F]/g, "").trim();
+      if (detectedName.length > 3) break;
+    }
+  }
 
-function executeOcrFlow(base64Data) {
-  try {
-    const rawText = extractTextFromImage(base64Data);
+  // 2. FALLBACK SEARCH: Use the standard noise-keyword loop if label search failed
+  if (detectedName === "Not found") {
+    const noiseKeywords = ["ELECTION", "COMMISSION", "INDIA", "IDENTITY", "CARD", "ELECTOR", "FATHER", "MOTHER", "HUSBAND", "SEX", "MALE", "FEMALE", "DATE", "BIRTH", "ADDRESS", "CONSTITUENCY"];
+
+    for (let line of lines) {
+      let englishOnlyLine = line.replace(/[^\x00-\x7F]/g, "").trim();
+      const upperLine = englishOnlyLine.toUpperCase();
+      
+      const isNoise = noiseKeywords.some(word => upperLine.includes(word));
+      const hasNumbers = /\d/.test(englishOnlyLine);
+
+      if (englishOnlyLine.length > 3 && !isNoise && !hasNumbers && englishOnlyLine.split(/\s+/).length >= 2) {
+        detectedName = englishOnlyLine;
+        break; 
+      }
+    }
+  }
+
+  return {
+    name: detectedName,
+    idNumber: idMatch ? idMatch[0].toUpperCase() : "",
+    raw: rawText 
+  };
+}
+
+/**
+ * Universal Parser for Indian Driving Licenses (All States)
+ * Targets MoRTH standard DL formats and common English labels.
+ */
+
+function parseDrivingLicenseData(combinedText) {
+  const lines = combinedText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  
+  // 1. Enhanced DL Number Regex
+  const dlPattern = /([A-Z0-4]{2}\d{2})[\s\-]?(\d{4})[\s\-]?(\d{5,7})/i;
+  const dlMatch = combinedText.match(dlPattern);
+  let idNumber = dlMatch ? (dlMatch[1] + " " + dlMatch[2] + dlMatch[3]).toUpperCase() : "";
+
+  // 2. High-Reliability Name Extraction
+  let detectedName = "Not found";
+  const noiseKeywords = ["TRANSPORT", "DATE", "BIRTH", "D.O.B", "ISSUE", "EXPIRY", "VALID", "ADDRESS", "S/O", "D/O", "W/O", "FATHER", "HUSBAND", "COV", "DOI", "INDIA", "CARD"];
+
+  for (let i = 0; i < lines.length; i++) {
+    const upperLine = lines[i].toUpperCase();
     
-    // 1. Check if ANY text was found at all
-    if (!rawText || rawText.trim().length === 0) {
-      throw new Error("No text detected. Please ensure the photo is clear and well-lit.");
+    // FUZZY ANCHOR CHECK: Catch "NAME", "N4ME", "NAM E", or "HOLDER"
+    const isNameLine = /N[A-Z0-4\s]{2,3}E|HOLDER/i.test(upperLine);
+    
+    if (isNameLine) {
+      let potentialName = "";
+      
+      // Strategy A: Check after a colon on the same line
+      if (lines[i].includes(":")) {
+        potentialName = lines[i].split(":").pop().trim();
+      }
+
+      // Strategy B: If Strategy A failed, check the next 3 lines (Deep Search)
+      // This is crucial for vertical cards like Yashaswini's
+      let searchOffset = 1;
+      while (potentialName.length < 3 && searchOffset <= 3 && (i + searchOffset) < lines.length) {
+        const candidate = lines[i + searchOffset].trim();
+        
+        // Validation: Ensure the candidate isn't just a date or noise
+        const isDate = /\d{2}[\/\-]\d{2}[\/\-]\d{4}/.test(candidate);
+        const isNoise = noiseKeywords.some(word => candidate.toUpperCase().includes(word));
+        const hasNumbers = /\d/.test(candidate);
+
+        if (candidate.length > 3 && !isDate && !isNoise && !hasNumbers) {
+          potentialName = candidate;
+        }
+        searchOffset++;
+      }
+
+      // Final Clean-up
+      const cleanName = potentialName.replace(/[^\x00-\x7F]/g, "").replace(/^[:\s\-]+/, "").trim();
+
+      if (cleanName.length > 3) {
+        detectedName = cleanName.toUpperCase();
+        break; 
+      }
+    }
+  }
+
+  return { name: detectedName, idNumber: idNumber, raw: combinedText };
+}
+
+/**
+ * Specialized parser for Indian Passports using regex for labels and MRZ patterns
+ */
+function parsePassportData(rawText) {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  
+  // Passport Pattern: 1 Letter + 7 Digits (Matches C3075733 and R9091871)
+  const idMatch = rawText.match(/[A-Z]\d{7}/i);
+  
+  let surname = "";
+  let givenName = "";
+  
+  // 1. TARGETED EXTRACTION: Search for Surname and Given Name labels
+  const headers = ["SURNAME", "GIVEN NAME", "NAME", "दिया गया नाम", "उपनाम"];
+
+  for (let i = 0; i < lines.length; i++) {
+    const upperLine = lines[i].toUpperCase();
+
+    // Find Surname
+    if (upperLine.includes("SURNAME") || upperLine.includes("उपनाम")) {
+      let val = lines[i].split(/[:/|-]/).pop().trim();
+      if (val.length < 3 && i + 1 < lines.length) val = lines[i + 1].trim();
+      
+      if (!headers.some(h => val.toUpperCase().includes(h))) {
+        surname = val.replace(/[^\x00-\x7F]/g, "").trim();
+      }
     }
 
-    // 2. Validate if it's likely a Govt ID
-    const idKeywords = ["GOVERNMENT", "INDIA", "INCOME TAX", "ELECTION", "DRIVING", "LICENSE", "ID", "CARD", "UNIQUE"];
-    const upperText = rawText.toUpperCase();
+    // Find Given Name
+    if (upperLine.includes("GIVEN NAME") || upperLine.includes("दिया गया नाम")) {
+      let val = lines[i].split(/[:/|-]/).pop().trim();
+      if (val.length < 3 && i + 1 < lines.length) val = lines[i + 1].trim();
+      
+      if (!headers.some(h => val.toUpperCase().includes(h))) {
+        givenName = val.replace(/[^\x00-\x7F]/g, "").trim();
+      }
+    }
+  }
+
+  // Initial Full Name assembly
+  let fullName = (givenName + " " + surname).trim();
+
+  // 2. MRZ FALLBACK: Reconstructs name from the machine-readable line at the bottom
+  // Specifically updated to fix the "PKIND" bug by aggressively stripping prefixes
+  if (!fullName || fullName.length < 5 || fullName.toUpperCase().includes("SURNAME")) {
+    const mrzLine = lines.find(l => l.startsWith("P<") || l.includes("<<"));
+    
+    if (mrzLine) {
+      // FIX: Aggressively strip the Passport type and Country code (e.g., P<IND, PKIND, P<)
+      const cleanMRZ = mrzLine.replace(/^P.[A-Z]{3}/i, "").replace(/^P</i, "");
+      const parts = cleanMRZ.split("<<");
+      
+      if (parts.length >= 2) {
+        // MRZ Format: SURNAME << GIVEN < NAME
+        const mrzSurname = parts[0].replace(/</g, " ").trim();
+        const mrzGiven = parts[1].replace(/</g, " ").trim();
+        
+        // Final sanity check to remove any lingering prefix fragments surviving the split
+        const finalSurname = mrzSurname.replace(/^[P|I|N|D|K]{1,5}\s+/i, "").trim();
+        
+        fullName = (mrzGiven + " " + finalSurname).trim();
+      }
+    }
+  }
+
+  return {
+    name: fullName.toUpperCase() || "Not found",
+    idNumber: idMatch ? idMatch[0].toUpperCase() : "",
+    raw: rawText 
+  };
+}
+
+/**
+ * Unified OCR Flow to handle single or dual image inputs
+ */
+function executeOcrFlow(frontBase64, backBase64, idType) {
+  try {
+    // 1. Extract text from both images
+    const frontText = frontBase64 ? extractTextFromImage(frontBase64) : "";
+    const backText = backBase64 ? extractTextFromImage(backBase64) : "";
+    
+    // 2. Merge text into a single search pool
+    const combinedRawText = `${frontText}\n${backText}`.trim();
+    
+    if (combinedRawText.length === 0) {
+      throw new Error("No text detected. Please ensure the photos are clear and well-lit.");
+    }
+
+    const upperText = combinedRawText.toUpperCase();
+    
+    // 3. Broad Validation
+    const idKeywords = ["GOVERNMENT", "INDIA", "INCOME TAX", "ELECTION", "DRIVING", "LICENSE", "ID", "CARD", "UNIQUE", "PASSPORT", "REPUBLIC"];
     const hasIdKeywords = idKeywords.some(keyword => upperText.includes(keyword));
 
     if (!hasIdKeywords) {
-      throw new Error("This doesn't look like a valid Government ID. Please upload a clear photo of your original card.");
+      throw new Error("This doesn't look like a valid Government ID. Please upload clear photos of your original card.");
     }
-    
-    return parseAadhaarData(rawText);
+
+    // 4. Routing to Parsers
+    // All parsers now receive the combined text from both sides
+    switch(idType) {
+      case "Aadhaar":
+        return parseAadhaarData(combinedRawText);
+      case "VoterID":
+        return parseVoterIDData(combinedRawText);
+      case "DL":
+        return parseDrivingLicenseData(combinedRawText);
+      case "Passport":
+        return parsePassportData(combinedRawText);
+      default:
+        throw new Error("Unsupported ID type selected.");
+    }
+
   } catch (e) {
-    // Re-throw the error so withFailureHandler catches it
+    console.error("OCR Flow Error: " + e.message);
     throw new Error(e.message);
   }
 }
+
+/**
+ * Searches guest by mobile number
+ * @param {string} mobile - The mobile number to search
+ */
+function searchGuestByMobile(mobile) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  
+  // Mobile is in Column 6 (index 5)
+  const mobileColIndex = 5; 
+  const searchMobile = String(mobile).replace(/[\s-+]/g, '');
+
+  for (let i = 1; i < data.length; i++) {
+    const existingMobile = String(data[i][mobileColIndex]).replace(/[\s-+]/g, '');
+    
+    if (existingMobile.endsWith(searchMobile) && searchMobile.length >= 10) {
+      return {
+        exists: true,
+        rowNumber: i + 1,
+        name: data[i][2],
+        idType: data[i][3],
+        idNumber: data[i][4],
+        emergencyName: data[i][8],
+        emergencyPhone: data[i][9],
+        city: data[i][7]
+      };
+    }
+  }
+  return { exists: false };
+}
+
+/**
+ * Cross-references an extracted ID with existing database to prevent duplicate IDs 
+ * across different mobile numbers.
+ */
+function checkIdMobileAssociation(extractedId, currentMobile) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+  
+  const idColIndex = 4; // Column 5 (IDNo)
+  const mobileColIndex = 5; // Column 6 (Phone)
+  
+  const searchId = String(extractedId).replace(/[\s-]/g, '').toUpperCase();
+  const searchMobile = String(currentMobile).replace(/[\s-+]/g, '');
+
+  for (let i = 1; i < data.length; i++) {
+    const existingId = String(data[i][idColIndex]).replace(/[\s-]/g, '').toUpperCase();
+    const existingMobile = String(data[i][mobileColIndex]).replace(/[\s-+]/g, '');
+
+    if (existingId === searchId && searchId !== "") {
+      // If ID matches but Mobile is different, we found a conflict
+      if (existingMobile !== searchMobile) {
+        return {
+          conflict: true,
+          existingName: data[i][2], // Column 3 (Name)
+          existingMobile: data[i][mobileColIndex]
+        };
+      }
+    }
+  }
+  return { conflict: false };
+}
+
+
+/******************** Test Functions **********************************/
 
 /**
  * Test function to verify the parsing logic for Aadhaar IDs
@@ -418,3 +758,32 @@ function testProcessSubmission() {
     console.error("Test Failed: " + e.toString());
   }
 }
+
+/**
+ * TEST CASE: Karnataka Driving License (13-digit)
+ * Image Reference: 20260512_101221_2.jpg
+ */
+function TestDL() {
+  const mockRawText = `
+    DL No. : KA02 20040011775
+    NAME : YASHASWINI H J
+    D.O.B : 30/06/1985
+    VALID TILL : 26/09/2034(NT)
+    S/O : JAVARAJA
+    ADDRESS : 912 16TH MAIN ROAD
+    BANGALORE NORTH, KA 560010
+  `;
+
+  console.log("--- Starting DL Debug Test ---");
+  const result = parseDrivingLicenseData(mockRawText);
+
+  // Assertions
+  const expectedID = "KA02 20040011775";
+  const expectedName = "YASHASWINI H J";
+
+  console.log("Testing ID Match:", result.idNumber === expectedID ? "✅ PASS" : "❌ FAIL (Got: " + result.idNumber + ")");
+  console.log("Testing Name Match:", result.name === expectedName ? "✅ PASS" : "❌ FAIL (Got: " + result.name + ")");
+  console.log("Full Result Object:", result);
+  console.log("------------------------------");
+}
+

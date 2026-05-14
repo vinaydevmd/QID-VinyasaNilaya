@@ -32,101 +32,98 @@
     </div>
 
     <div id="registrationForm">
-
-      <!-- Section 1: Identity Verification -->
       <section class="mb-5">
-        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-person-badge-fill me-2"></i>1. Identity Verification</h5>
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-search me-2"></i>1. Guest Search</h5>
         
-        <div class="mb-4">
-          <label class="form-label small fw-bold text-muted text-uppercase">Govt ID Type</label>
-          <select id="idType" class="form-select form-select-lg shadow-sm">
-            <option value="Aadhaar" selected>Aadhaar Card</option>
-            <option value="Driving License">Driving License</option>
-            <option value="Voter ID">Voter ID</option>
-          </select>
+       
+
+        <div class="input-group input-group-lg shadow-sm mb-4">
+          <span class="input-group-text bg-white border-end-0"><i class="bi bi-phone"></i></span>
+          <input type="tel" id="searchMobile" class="form-control border-start-0 ps-0" placeholder="Enter Mobile Number">
+          <button class="btn btn-primary fw-bold" type="button" id="searchBtn" onclick="handleMobileSearch()">Search</button>
         </div>
 
-        <!-- ID Upload Row: Stacks vertically on small screens via CSS/Bootstrap -->
-        <div class="row g-3 mb-4 id-row">
-          <!-- Front Side -->
-          <div class="col-6 id-col">
-            <div class="upload-box shadow-sm" onclick="document.getElementById('idFront').click()">
-              <div id="frontPreview" class="preview-container text-center">
-                <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
-                <span class="d-block fw-semibold">Front Side</span>
-                <small class="text-muted d-none d-md-block">Click to upload</small>
-              </div>
-            </div>
-            <input type="file" id="idFront" hidden accept="image/*" onchange="handlePreview(this, 'frontPreview')">
+        <div id="idUploadSection" class="d-none">
+          <div class="alert alert-info small py-2 mb-4">
+            <i class="bi bi-info-circle me-2"></i>No record found. Please scan your Govt ID.
           </div>
 
-          <!-- Back Side -->
-          <div class="col-6 id-col">
-            <div class="upload-box shadow-sm" onclick="document.getElementById('idBack').click()">
-              <div id="backPreview" class="preview-container text-center">
-                <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
-                <span class="d-block fw-semibold">Back Side</span>
-                <small class="text-muted d-none d-md-block">Click to upload</small>
+           <!-- Nationality Toggle -->
+          <div class="mb-4 p-3 bg-light rounded-4 border-0 shadow-sm">
+            <label class="form-label small fw-bold text-muted text-uppercase d-block mb-3">Guest Nationality</label>
+            <div class="d-flex gap-4">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="nationality" id="natIndian" value="Indian" checked onchange="updateIdOptions()">
+                <label class="form-check-label fw-bold" for="natIndian">🇮🇳 Indian Guest</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="nationality" id="natForeign" value="Foreign" onchange="updateIdOptions()">
+                <label class="form-check-label fw-bold" for="natForeign">🌐 Foreign Guest</label>
               </div>
             </div>
-            <input type="file" id="idBack" hidden accept="image/*" onchange="handlePreview(this, 'backPreview')">
           </div>
+          
+          <div class="mb-4">
+            <label class="form-label small fw-bold text-muted text-uppercase">Govt ID Type</label>
+            <select id="idType" class="form-select form-select-lg shadow-sm">
+              <!-- Options injected via updateIdOptions() -->
+            </select>
+          </div>
+
+
+          <div class="row g-3 mb-4">
+            <div class="col-6">
+              <div class="upload-box shadow-sm" onclick="document.getElementById('idFront').click()">
+                <div id="frontPreview" class="preview-container text-center">
+                  <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+                  <span class="d-block fw-semibold">Front Side</span>
+                </div>
+              </div>
+              <input type="file" id="idFront" hidden accept="image/*" onchange="handlePreview(this, 'frontPreview')">
+            </div>
+            <div class="col-6">
+              <div class="upload-box shadow-sm" onclick="document.getElementById('idBack').click()">
+                <div id="backPreview" class="preview-container text-center">
+                  <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+                  <span class="d-block fw-semibold">Back Side</span>
+                </div>
+              </div>
+              <input type="file" id="idBack" hidden accept="image/*" onchange="handlePreview(this, 'backPreview')">
+            </div>
+          </div>
+
+          <button type="button" id="scanBtn" class="btn btn-outline-primary w-100 py-3 fw-bold mb-4" onclick="handleIdScan()">
+            <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+            Start AI Identity Scan
+          </button>
         </div>
 
-        <button type="button" id="scanBtn" class="btn btn-primary w-100 py-3 fw-bold shadow-sm mb-4" onclick="handleIdScan()">
-          <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2"></span>
-          Start AI Identity Scan
-        </button>
-
-        <!-- Mandatory Verification Section -->
         <div id="ocrConfirmation" class="p-4 border-0 rounded-4 bg-light shadow-inner d-none">
-          <p class="fw-bold text-success mb-3 small"><i class="bi bi-shield-check me-1"></i> Verify Details</p>
+          <p id="welcomeMsg" class="fw-bold text-success mb-3 small d-none"><i class="bi bi-shield-check me-1"></i> Welcome back! Details loaded.</p>
+          
           <div class="mb-3">
-            <label class="form-label small fw-bold text-muted text-uppercase">Full Name (As per ID)</label>
-            <input type="text" id="name" class="form-control form-control-lg border-0 shadow-sm" required placeholder="Enter Name">
+            <label class="form-label small fw-bold text-muted text-uppercase">Full Name</label>
+            <input type="text" id="name" class="form-control form-control-lg border-0 shadow-sm" required>
           </div>
           <div class="mb-3">
             <label class="form-label small fw-bold text-muted text-uppercase">ID Number</label>
-            <input type="text" id="idNumber" class="form-control form-control-lg border-0 shadow-sm" required placeholder="Enter ID Number">
+            <input type="text" id="idNumber" class="form-control form-control-lg border-0 shadow-sm" required>
+          </div>
+          <!-- Professional Verification Note -->
+          <div class="p-3 mb-3 border-0 rounded-3 bg-white shadow-sm" style="border-left: 4px solid #0d6efd !important;">
+            <p class="mb-0 small text-muted">
+              <i class="bi bi-info-circle-fill text-primary me-1"></i>
+              <strong>Verification:</strong> Please review the loaded details. If any information was misread during the scan, feel free to update the name or ID number manually.
+            </p>
           </div>
           <div class="form-check mt-3">
             <input class="form-check-input" type="checkbox" id="detailsVerified" required>
-            <label class="form-check-label small fw-semibold" for="detailsVerified">
-              I confirm these details are correct.
-            </label>
+            <label class="form-check-label small fw-semibold" for="detailsVerified">I confirm these details are correct.</label>
           </div>
         </div>
       </section>
-      
-      <!-- Section 2: Travel Details -->
       <section class="mb-5">
-        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-airplane-engines-fill me-2"></i>2. Travel Information</h5>
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Purpose of Travel</label>
-            <select id="purpose" class="form-select form-select-lg shadow-sm">
-              <option value="Tourism/Leisure">Tourism/Leisure</option>
-              <option value="Business">Business</option>
-              <option value="Study">Study</option>
-              <option value="Work">Work</option>
-              <option value="Volunteering">Volunteering</option>
-              <option value="Other">Other</option>
-            </select>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Arriving City</label>
-            <input type="text" id="city" class="form-control form-control-lg shadow-sm" placeholder="e.g. Bengaluru">
-          </div>
-        </div>
-        <div class="mt-3">
-          <label class="form-label small fw-bold text-muted text-uppercase">WhatsApp Number</label>
-          <input type="tel" id="whatsapp" class="form-control form-control-lg shadow-sm" placeholder="+91 00000 00000">
-        </div>
-      </section>
-
-      <!-- Section 3: Emergency Contact -->
-      <section class="mb-5">
-        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-telephone-plus-fill me-2"></i>3. Emergency Contact</h5>
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-telephone-plus-fill me-2"></i>2. Emergency Contact</h5>
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label small fw-bold text-muted text-uppercase">Contact Person</label>
@@ -139,98 +136,90 @@
         </div>
       </section>
 
-      <!-- Section 4: Stay Details -->
       <section class="mb-5">
-        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-calendar-check-fill me-2"></i>4. Stay Details</h5>
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-airplane-engines-fill me-2"></i>3. Travel Information</h5>
         <div class="row g-3 mb-3">
           <div class="col-md-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Check-in Date</label>
-            <input type="date" id="checkIn" class="form-control form-control-lg shadow-sm" onchange="calculateNights()">
+            <label class="form-label small fw-bold text-muted text-uppercase">Arriving From (City)</label>
+            <input type="text" id="city" class="form-control form-control-lg shadow-sm" placeholder="e.g. Bengaluru">
           </div>
           <div class="col-md-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Check-out Date</label>
-            <input type="date" id="checkOut" class="form-control form-control-lg shadow-sm" onchange="calculateNights()">
+            <label class="form-label small fw-bold text-muted text-uppercase">Purpose of Travel</label>
+            <select id="purpose" class="form-select form-select-lg shadow-sm">
+              <option value="">Select Purpose</option>
+              <option value="Tourism/Leisure">Tourism/Leisure</option>
+              <option value="Business">Business</option>
+              <option value="Other">Other</option>
+            </select>
           </div>
         </div>
-        
-        <div id="stayDuration" class="text-end mb-4 d-none">
-          <span class="badge bg-info text-dark p-2 rounded-3">Total Stay: <span id="nightCount">0</span> Nights</span>
+        <div class="mt-3">
+          <label class="form-label small fw-bold text-muted text-uppercase">Registration WhatsApp Number</label>
+          <input type="tel" id="whatsapp" class="form-control form-control-lg shadow-sm bg-light" placeholder="+91 00000 00000" readonly>
+          <small class="text-muted">Managed via search mobile number</small>
+        </div>
+      </section>
+
+      <section class="mb-5">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-person-bounding-box me-2"></i>4. Identity Verification (Selfie)</h5>
+        <div id="selfieContainer" class="position-relative overflow-hidden shadow-sm mb-2 rounded-4 bg-dark" style="height: 300px; cursor: pointer;" onclick="initiateSelfieProcess()">
+          <div id="cameraPlaceholder" class="w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-light border">
+            <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
+              <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
+            </div>
+            <span class="fw-bold">Tap to Take Verification Selfie</span>
+          </div>
+          <video id="selfieStream" autoplay playsinline muted class="d-none w-100 h-100" style="object-fit: cover; transform: scaleX(-1);"></video>
+          <div id="selfieGuide" class="d-none position-absolute top-50 start-50 translate-middle border border-success border-4 rounded-circle" style="width: 180px; height: 180px; opacity: 0.7; z-index: 10; pointer-events: none;"></div>
+          <div id="captureOverlay" class="d-none position-absolute bottom-0 start-0 w-100 p-3 text-center" style="z-index: 11;">
+            <button type="button" class="btn btn-light rounded-circle shadow-lg p-3" onclick="event.stopPropagation(); takeSnapshot();"><i class="bi bi-camera-fill h4 mb-0"></i></button>
+          </div>
+          <canvas id="selfieCanvas" class="d-none w-100 h-100 position-absolute top-0 start-0" style="object-fit: cover; z-index: 12; transform: scaleX(-1);"></canvas>
+        </div>
+        <input type="file" id="selfieInput" hidden accept="image/*" capture="user" onchange="handleFallbackSelfie(this)">
+        <div class="d-flex justify-content-between px-1">
+          <small class="text-muted" id="selfieStatus">Camera ready</small>
+          <button type="button" class="btn btn-link btn-sm text-decoration-none d-none" id="retakeBtn" onclick="restartCamera()">Retake Photo</button>
+        </div>
+      </section>
+
+      <section class="mb-4">
+        <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-shield-lock-fill me-2"></i>5. Terms & Conditions</h5>
+        <div class="p-3 bg-white border rounded-4 mb-3 shadow-inner" style="max-height: 150px; overflow-y: auto; font-size: 0.85rem;">
+          <ol class="ps-3 mb-0 text-muted">
+            <li>Guests must provide valid original government ID upon arrival.</li>
+            <li>Management reserves the right to refuse check-in for non-compliance.</li>
+            <li>Check-out time is strictly 11:00 AM.</li>
+            <li>Vinyasa Nilaya is a smoke-free and alcohol-free premises.</li>
+            <li>[Additional conditions will be appended here...]</li>
+          </ol>
         </div>
 
-        <div class="row g-3">
-          <div class="col-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Adults (12+ yrs)</label>
-            <input type="number" id="adults" class="form-control form-control-lg shadow-sm" value="1" min="1">
-          </div>
-          <div class="col-6">
-            <label class="form-label small fw-bold text-muted text-uppercase">Kids (Below 12)</label>
-            <input type="number" id="kids" class="form-control form-control-lg shadow-sm" value="0" min="0">
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" id="termsAccepted" required style="cursor: pointer;">
+          <label class="form-check-label small fw-bold" for="termsAccepted">
+            I accept the Vinyasa Nilaya House Rules & Terms.
+          </label>
+        </div>
+
+        <div class="p-3 bg-light rounded-4 border-0 shadow-sm">
+          <div class="d-flex align-items-start">
+            <div class="me-3">
+              <input class="form-check-input" type="checkbox" id="detailsVerified" required style="width: 1.25em; height: 1.25em; cursor: pointer;">
+            </div>
+            <label class="form-check-label small fw-semibold text-dark" for="detailsVerified">
+              6. I hereby confirm that all the information provided above is accurate and complete.
+            </label>
           </div>
         </div>
       </section>
 
-      <!-- Section 5: Security Selfie -->
-    <section class="mb-5">
-      <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-person-bounding-box me-2"></i>5. Identity Verification (Selfie)</h5>
-      
-      <div id="selfieContainer" class="position-relative overflow-hidden shadow-sm mb-2 rounded-4 bg-dark" style="height: 300px; cursor: pointer;" onclick="initiateSelfieProcess()">
-        
-        <!-- 1. Initial Placeholder (Shown before camera starts) -->
-        <div id="cameraPlaceholder" class="w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-light border">
-          <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
-            <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
-          </div>
-          <span class="fw-bold">Tap to Enable Camera</span>
-          <small class="text-muted">Front camera will be used for verification</small>
-        </div>
-
-        <!-- 2. Live Video Feed (Hidden initially) -->
-        <video id="selfieStream" autoplay playsinline muted class="d-none w-100 h-100" style="object-fit: cover; transform: scaleX(-1);"></video>
-
-        <!-- 3. The "Green Circle" Guide -->
-        <div id="selfieGuide" class="d-none position-absolute top-50 start-50 translate-middle border border-success border-4 rounded-circle" style="width: 180px; height: 180px; opacity: 0.7; z-index: 10; pointer-events: none;">
-          <div class="position-absolute top-100 start-50 translate-middle-x text-success bg-white px-2 py-1 rounded shadow-sm small fw-bold mt-2" style="white-space: nowrap;">
-            ALIGN FACE HERE
-          </div>
-        </div>
-
-        <!-- 4. Capture Button Overlay -->
-        <div id="captureOverlay" class="d-none position-absolute bottom-0 start-0 w-100 p-3 text-center" style="z-index: 11;">
-          <button type="button" class="btn btn-light rounded-circle shadow-lg p-3" onclick="event.stopPropagation(); takeSnapshot();" id="snapBtn">
-            <i class="bi bi-camera-fill h4 mb-0"></i>
-          </button>
-        </div>
-
-        <!-- 5. Result Preview Canvas -->
-        <canvas id="selfieCanvas" class="d-none w-100 h-100 position-absolute top-0 start-0" style="object-fit: cover; z-index: 12; transform: scaleX(-1);"></canvas>
-      </div>
-
-      <!-- Fallback File Input -->
-      <input type="file" id="selfieInput" hidden accept="image/*" capture="user" onchange="handleFallbackSelfie(this)">
-
-      <div class="d-flex justify-content-between px-1">
-        <small class="text-muted" id="selfieStatus">Camera currently off</small>
-        <button type="button" class="btn btn-link btn-sm text-decoration-none d-none" id="retakeBtn" onclick="restartCamera()">Retake Photo</button>
-      </div>
-    </section>
-
-      <!-- Final Consent Card -->
-      <div class="mb-4 p-4 bg-light rounded-4 border-0 shadow-sm">
-        <div class="d-flex align-items-start">
-          <div class="me-3">
-            <input class="form-check-input" type="checkbox" id="consent" required style="width: 1.5em; height: 1.5em; cursor: pointer;">
-          </div>
-          <label class="form-check-label small fw-semibold text-dark" for="consent" style="cursor: pointer; line-height: 1.5;">
-            I hereby confirm that all the information provided above is accurate and complete.
-          </label>
-        </div>
-      </div>
-
-      <button id="submitBtn" class="btn btn-success btn-lg w-100 py-3 fw-bold shadow" onclick="finalSubmit()">
-        Submit Registration
+      <button id="submitBtn" class="btn btn-success btn-lg w-100 py-3 fw-bold shadow-sm rounded-pill" onclick="finalSubmit()">
+        Complete Check-in
       </button>
 
     </div>
+
     <div id="finalStatus" class="mt-3 text-center"></div>
   </div>  
 </div>
@@ -266,6 +255,28 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="modal fade" id="notificationModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 shadow">
+      <div class="modal-body p-4 text-center">
+        <div id="modalIconContainer" class="mb-3">
+           </div>
+        <h5 id="modalTitle" class="fw-bold mb-2">Notice</h5>
+        <p id="modalMessage" class="text-muted mb-4"></p>
+        <button type="button" class="btn btn-primary w-100 rounded-pill py-2 fw-bold" data-bs-dismiss="modal" id="modalActionBtn">
+          Continue
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="loadingOverlay" class="d-none position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-white bg-opacity-75" style="z-index: 9999;">
+  <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+  <h5 class="fw-bold text-primary">Securing your Check-in...</h5>
+  <p class="text-muted small">Finalizing your records at Vinyasa Nilaya</p>
 </div>
 
 <?!= include('Scripts'); ?>
