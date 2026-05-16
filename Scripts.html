@@ -158,78 +158,7 @@
     }
   }
 
-
-  /**
-   * Final Submission to Google Sheets/Drive
-   */
-  function submitData() {
-    const btn = document.getElementById('submitBtn');
-    const data = {
-      name: document.getElementById('name').value,
-      phone: document.getElementById('phone').value,
-      arrival: document.getElementById('arrival').value,
-      idType: document.getElementById('idType').value,
-      idNumber: document.getElementById('idNumber').value,
-      terms: document.getElementById('terms').checked,
-      selfie: selfieBase64
-    };
-
-    // Validation
-    if (!data.name || !data.idNumber || !selfieBase64) {
-      alert("Please complete all fields, verify your ID, and capture a selfie.");
-      return;
-    }
-    if (!data.terms) {
-      alert("Please accept the Terms and Conditions.");
-      return;
-    }
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-
-    google.script.run
-      .withSuccessHandler(res => {
-        if (res.success) {
-          document.getElementById('formStep').innerHTML = `
-            <div class="text-center py-4">
-              <h3 class="text-success">✓ Success!</h3>
-              <p>${res.message}</p>
-              <button class="btn btn-outline-primary btn-sm" onclick="window.location.reload()">New Registration</button>
-            </div>`;
-        } else {
-          alert("Error: " + res.message);
-          btn.disabled = false;
-          btn.innerHTML = "Complete Booking";
-        }
-      })
-      .processSubmission(data);
-  }
-
-  async function extractAadhaarDetails() {
-    const fileInput = document.getElementById('aadhaarFront');
-    if (!fileInput.files[0]) return alert("Please select the Front of your Aadhaar first.");
-
-    const btn = document.querySelector('button[onclick="extractAadhaarDetails()"]');
-    btn.innerText = "Scanning...";
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const base64 = e.target.result;
-      
-      google.script.run.withSuccessHandler(rawText => {
-        google.script.run.withSuccessHandler(result => {
-          // Auto-fill the form fields
-          if(result.name) document.getElementById('name').value = result.name;
-          if(result.idNumber) document.getElementById('idNumber').value = result.idNumber;
-          
-          btn.innerText = "Scan Complete";
-          alert("Details extracted! Please verify them for accuracy.");
-        }).parseAadhaarData(rawText);
-      }).extractTextFromImage(base64);
-    };
-    reader.readAsDataURL(fileInput.files[0]);
-  }
-
+ /*Handle preview */
   function handlePreview(input, previewId) {
     const container = document.getElementById(previewId);
     const file = input.files[0];
@@ -290,6 +219,7 @@
       updateIdOptions();
   });
 
+/* Handle AI ID Scans*/
   async function handleIdScan() {
     const frontFile = document.getElementById('idFront').files[0];
     const backFile = document.getElementById('idBack').files[0]; // Fetch the back side
@@ -328,6 +258,8 @@
       // 2. Execute Unified Flow (Passing BOTH images)
       google.script.run
         .withSuccessHandler(function(res) {
+
+         console.log("Checking database - ID: " + res.idNumber + " | Mobile: " + currentMobile + " | Address: " + res.address);
           
           // Security Cross-Check
           google.script.run
@@ -339,6 +271,7 @@
                 
                 document.getElementById('name').value = "";
                 document.getElementById('idNumber').value = "";
+                document.getElementById('address').value = "";
                 
                 showNotification(
                   "Security Alert", 
@@ -349,6 +282,8 @@
                 return;
               }
 
+              console.log("No conflict");
+
               // SUCCESS: Populate UI
               document.getElementById('ocrConfirmation').classList.remove('d-none');
               document.getElementById('name').value = (res.name !== "Not found") ? res.name : "";
@@ -356,6 +291,8 @@
               // Privacy Redaction for Aadhaar handled on display
               const isAadhaar = idType === "Aadhaar";
               document.getElementById('idNumber').value = res.idNumber;
+
+              document.getElementById('address').value = res.address;
 
               if (spinner) spinner.classList.add('d-none');
               btn.disabled = false;
@@ -434,17 +371,42 @@
     }
   }
 
-  function finalSubmit() {
+  /**
+   * Final Submission to Google Sheets/Drive
+   */
+  async function finalSubmit() {
     const overlay = document.getElementById('loadingOverlay');
     const submitBtn = document.getElementById('submitBtn');
+
+    const isUpdate = document.getElementById('isExistingGuest').value === "true";
+    const rowNumber = document.getElementById('rowNumber').value;
 
     // 1. Show Progress
     overlay.classList.remove('d-none');
     submitBtn.disabled = true;
 
-    // 2. Prepare Data Object
+    //2. Take front and back ID's
+    const frontFile = document.getElementById('idFront').files[0];
+    const backFile = document.getElementById('idBack').files[0]; // Fetch the back side
+
+ 
+    // 3. Handle Selfie Data (Check Canvas first, then File Input)
+    let selfieBase64 = "";
+    const canvas = document.getElementById('selfieCanvas');
+    const selfieInput = document.getElementById('selfieInput');
+
+    if (!canvas.classList.contains('d-none')) {
+      selfieBase64 = canvas.toDataURL('image/jpeg');
+    } else if (selfieInput.files.length > 0) {
+      selfieBase64 = await toBase64(selfieInput.files[0]);
+    } else {
+      throw new Error("Please take a selfie for identity verification.");
+    }
+
+    // 4. Prepare Data Object
     const formData = {
-      rowNumber: document.getElementById('rowNumber').value || null, // Critical for updates
+      isUpdate: isUpdate,
+      rowNumber: rowNumber,
       name: document.getElementById('name').value,
       idType: document.getElementById('idType').value,
       idNumber: document.getElementById('idNumber').value,
@@ -453,29 +415,31 @@
       city: document.getElementById('city').value,
       emergencyName: document.getElementById('emergencyName').value,
       emergencyPhone: document.getElementById('emergencyPhone').value,
-      
-      // Capture the Selfie Base64 from Canvas
-      selfieBase64: document.getElementById('selfieCanvas').toDataURL('image/jpeg', 0.8),
-      
       // Capture ID Proofs only if they were just scanned (new guest)
-      idFrontBase64: window.idFrontBase64 || null, 
-      idBackBase64: window.idBackBase64 || null,
-      
-      consent: document.getElementById('termsAccepted').checked
+      // Convert ID Proofs only if new files were selected
+      idFrontBase64: frontFile ? await toBase64(frontFile) : null, 
+      idBackBase64: backFile ? await toBase64(backFile) : null,
+      selfieBase64: selfieBase64,
+      address:document.getElementById('address').value
     };
 
-    // 3. Send to Google Apps Script
+    // 5. Send to Google Apps Script
     google.script.run
       .withSuccessHandler(function(res) {
         overlay.classList.add('d-none');
         if (res.success) {
           showNotification(
             "Check-in Successful", 
-            `Registration Complete! Your Serial Number is VN-${res.slNo}. ${res.status}`, 
+            `Registration Complete!. ${res.status}`, 
             "success"
           );
           // Optional: Redirect or reload after 3 seconds
-          setTimeout(() => { location.reload(); }, 3500);
+          setTimeout(() => {
+            resetRegistrationForm();
+            // 5. Reset Selfi section
+            resetSelfieSection();
+          }, 2500);
+          
         }
       })
       .withFailureHandler(function(err) {
@@ -496,6 +460,7 @@
       });
     }
 
+  /* Function to handle mobile search*/
   function handleMobileSearch() {
     const searchMobile = document.getElementById('searchMobile').value;
     const searchBtn = document.getElementById('searchBtn');
@@ -535,6 +500,10 @@
           sBtn.disabled = true; 
           sInput.readOnly = true;
 
+          // 1. Set the hidden trackers
+          document.getElementById('isExistingGuest').value = "true";
+          document.getElementById('rowNumber').value = guest.rowNumber;
+
           // RETURNING GUEST
           idUploadSection.classList.add('d-none'); // Hide scanning
           ocrConfirmation.classList.remove('d-none');
@@ -547,12 +516,15 @@
           document.getElementById('emergencyPhone').value = guest.emergencyPhone;
           document.getElementById('city').value = guest.city;
           
-          // Lock inputs to prevent accidental changes
-          //document.getElementById('rowNumber').value = guest.rowNumber; // Check if this ID matches exactly
-          //console.log("Found guest at row: " + guest.rowNumber);
+          console.log("Found guest at row: " + guest.rowNumber);
 
         } else {
           // --- 3. SEARCH FAILED (New Guest) ---
+
+          // Reset trackers for a new guest
+          document.getElementById('isExistingGuest').value = "false";
+          document.getElementById('rowNumber').value = "";
+
           // Re-enable so they can fix the number if it was a typo
           sBtn.disabled = false;
           sBtn.innerHTML = 'Search';
@@ -568,6 +540,8 @@
             "info"
           );
         }
+
+        showVerificationSection();
       })
       .withFailureHandler(function(err) {
         // --- 4. ERROR STATE ---
@@ -576,6 +550,19 @@
         showNotification("Error", "System search failed. Please try again.", "error");
       })
       .searchGuestByMobile(searchMobile);
+  }
+
+  // Add this logic where you display the verification/summary section
+  function showVerificationSection() {
+    const isUpdate = document.getElementById('isExistingGuest').value === "true";
+
+    // 3. Handle the Professional Note visibility
+    const note = document.getElementById('verificationNote');
+    if (isUpdate) {
+      note.classList.add('d-none'); // Hide for returning guests
+    } else {
+      note.classList.remove('d-none'); // Show for new guest scanning ID
+    }
   }
 
   /**
@@ -624,6 +611,132 @@
     modal.show();
   }
 
+  function resetRegistrationForm() {
+    console.log("Starting full reset...");
+
+    const sInput = document.getElementById('searchMobile');
+    const sBtn = document.getElementById('searchBtn');
+
+    // Restore back to original 
+    searchBtn.innerHTML = 'Search';
+    sBtn.disabled = false; 
+    sInput.readOnly = false;
+
+    
+    // 1. Clear all Input fields inside the registration div
+    const container = document.getElementById('registrationForm');
+    const inputs = container.querySelectorAll('input, select');
+    inputs.forEach(input => {
+      if (input.type === 'checkbox' || input.type === 'radio') {
+        // Keep Indian Guest as default for Vinyasa Nilaya
+        if (input.id === 'natIndian') {
+          input.checked = true;
+          // Trigger the change logic so the ID dropdown updates its options
+          updateIdOptions();
+
+          // 2. Force ID Type to Aadhaar
+          // We use a small timeout to ensure updateIdOptions() has finished 
+          // populating the list before we try to select Aadhaar
+          setTimeout(() => {
+            const idTypeSelect = document.getElementById('idType');
+            if (idTypeSelect) {
+              idTypeSelect.value = "Aadhaar"; 
+            }
+          }, 50);
+
+        }
+        else input.checked = false;
+      } else {
+        input.value = '';
+      }
+    });
+
+    // 2. Clear Hidden Trackers
+    document.getElementById('isExistingGuest').value = "false";
+    document.getElementById('rowNumber').value = "";
+
+    // 3. Reset UI Sections
+    document.getElementById('idUploadSection').classList.add('d-none');
+    document.getElementById('ocrConfirmation').classList.add('d-none');
+    document.getElementById('welcomeMsg').classList.add('d-none');
+    document.getElementById('verificationNote').classList.remove('d-none'); // Show note for next new guest
+    
+    // 4. Reset Previews (ID images)
+    document.getElementById('frontPreview').innerHTML = '<i class="bi bi-camera-fill h2 mb-1 text-primary"></i><span class="d-block fw-semibold">Front Side</span>';
+    document.getElementById('backPreview').innerHTML = '<i class="bi bi-camera-fill h2 mb-1 text-primary"></i><span class="d-block fw-semibold">Back Side</span>';
+
+    //5. Reset ScanAI images fields
+     const btn = document.getElementById('scanBtn');
+     btn.disabled = false;
+     btn.innerHTML = 'Start AI Identity Scan';
+     btn.className = "btn btn-primary w-100 py-3 fw-bold";
+     resetImageUploads();
+
+    // 6. Reset Submit Button
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = 'Complete Check-in';
+      
+      // Ensure it uses btn-success for the green color, 
+      // but keep .disabled or [disabled] for the faded effect.
+      submitBtn.classList.remove('btn-primary', 'btn-secondary');
+      submitBtn.classList.add('btn-success'); 
+      
+      // If your CSS uses opacity for disabled states, it will look like the faded green.
+    }
+
+    // 7. UI Polish
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    console.log("Vinyasa Nilaya portal ready for next guest.");
+  }
+
+
+  function resetSelfieSection() {
+    console.log("Forcing a hard reset of the selfie tile...");
+
+    // 1. Kill the camera hardware immediately
+    if (typeof stream !== 'undefined' && stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    // 2. TARGET THE CONTAINER
+    const container = document.getElementById('selfieContainer');
+    
+    // 3. WIPE AND RE-INJECT ORIGINAL HTML
+    // This physically deletes the old canvas/image and puts back a fresh tile
+    container.innerHTML = `
+      <div id="cameraPlaceholder" class="w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-light border">
+        <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
+          <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
+        </div>
+        <span class="fw-bold">Tap to Take Verification Selfie</span>
+      </div>
+      <video id="selfieStream" autoplay playsinline muted class="d-none w-100 h-100" style="object-fit: cover; transform: scaleX(-1);"></video>
+      <div id="selfieGuide" class="d-none position-absolute top-50 start-50 translate-middle border border-success border-4 rounded-circle" style="width: 180px; height: 180px; opacity: 0.7; z-index: 10; pointer-events: none;"></div>
+      <div id="captureOverlay" class="d-none position-absolute bottom-0 start-0 w-100 p-3 text-center" style="z-index: 11;">
+        <button type="button" class="btn btn-light rounded-circle shadow-lg p-3" onclick="event.stopPropagation(); takeSnapshot();"><i class="bi bi-camera-fill h4 mb-0"></i></button>
+      </div>
+      <canvas id="selfieCanvas" class="d-none w-100 h-100 position-absolute top-0 start-0" style="object-fit: cover; z-index: 12; transform: scaleX(-1);"></canvas>
+    `;
+
+    // 4. Reset External Controls
+    document.getElementById('retakeBtn').classList.add('d-none');
+    document.getElementById('selfieStatus').innerText = "Camera ready";
+    document.getElementById('selfieInput').value = "";
+
+    // Inside resetSelfieSection...
+    const canvas = document.getElementById('selfieCanvas');
+    if (canvas) {
+        canvas.width = 0;  // Setting width to 0 makes toDataURL() return "data:," (null/empty)
+        canvas.height = 0;
+    }
+
+    
+    console.log("Selfie tile physically rebuilt.");
+  }
+
   /**
    * Monitors form state to enable/disable the submit button
    */
@@ -634,9 +747,13 @@
     const hasName = document.getElementById('name').value.trim() !== "";
     const hasId = document.getElementById('idNumber').value.trim() !== "";
     const idVerified = document.getElementById('detailsVerified').checked;
+    
+    // 2. Check Purpose of Travel (New)
+    const purposeSelect = document.getElementById('purpose');
+    const hasPurpose = purposeSelect && purposeSelect.value !== "";
 
     
-    // 2. Check Selfie 
+    // 3. Check Selfie 
     const selfieCanvas = document.getElementById('selfieCanvas');
     const selfieData = selfieCanvas.toDataURL();
 
@@ -656,7 +773,7 @@
     const infoConfirmed = document.getElementById('detailsVerified').checked; // Using your Column 6 check
 
     // Master Toggle
-    if (hasName && hasId && idVerified && hasSelfie && termsAccepted && infoConfirmed) {
+    if (hasName && hasId && idVerified && hasSelfie && termsAccepted && infoConfirmed && hasPurpose) {
       submitBtn.disabled = false;
       submitBtn.classList.remove('opacity-50');
     } else {
@@ -665,12 +782,12 @@
     }
   }
 
-// Add event listeners to all triggers
-document.addEventListener('change', validateFormState);
-document.addEventListener('input', validateFormState);
+  // Add event listeners to all triggers
+  document.addEventListener('change', validateFormState);
+  document.addEventListener('input', validateFormState);
 
-// Initialize button as disabled on load
-window.onload = () => { document.getElementById('submitBtn').disabled = true; };
+  // Initialize button as disabled on load
+  window.onload = () => { document.getElementById('submitBtn').disabled = true; };
 
 
 </script>

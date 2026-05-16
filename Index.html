@@ -35,8 +35,6 @@
       <section class="mb-5">
         <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-search me-2"></i>1. Guest Search</h5>
         
-       
-
         <div class="input-group input-group-lg shadow-sm mb-4">
           <span class="input-group-text bg-white border-end-0"><i class="bi bi-phone"></i></span>
           <input type="tel" id="searchMobile" class="form-control border-start-0 ps-0" placeholder="Enter Mobile Number">
@@ -110,7 +108,7 @@
             <input type="text" id="idNumber" class="form-control form-control-lg border-0 shadow-sm" required>
           </div>
           <!-- Professional Verification Note -->
-          <div class="p-3 mb-3 border-0 rounded-3 bg-white shadow-sm" style="border-left: 4px solid #0d6efd !important;">
+          <div id="verificationNote" class="p-3 mb-3 border-0 rounded-3 bg-white shadow-sm" style="border-left: 4px solid #0d6efd !important;">
             <p class="mb-0 small text-muted">
               <i class="bi bi-info-circle-fill text-primary me-1"></i>
               <strong>Verification:</strong> Please review the loaded details. If any information was misread during the scan, feel free to update the name or ID number manually.
@@ -149,6 +147,12 @@
               <option value="">Select Purpose</option>
               <option value="Tourism/Leisure">Tourism/Leisure</option>
               <option value="Business">Business</option>
+              <option value="Study">Study</option>
+              <option value="Work">Work</option>
+              <option value="Volunteering">Volunteering</option>
+              <option value="Event\Concert">Event\Concert</option>
+              <option value="Mysuru-Dasara">Mysuru-Dasara</option>
+              <option value="Auyervda\Therapy">Ayurveda\Therapy</option>
               <option value="Other">Other</option>
             </select>
           </div>
@@ -187,11 +191,12 @@
         <h5 class="mb-3 fw-bold text-primary"><i class="bi bi-shield-lock-fill me-2"></i>5. Terms & Conditions</h5>
         <div class="p-3 bg-white border rounded-4 mb-3 shadow-inner" style="max-height: 150px; overflow-y: auto; font-size: 0.85rem;">
           <ol class="ps-3 mb-0 text-muted">
-            <li>Guests must provide valid original government ID upon arrival.</li>
-            <li>Management reserves the right to refuse check-in for non-compliance.</li>
-            <li>Check-out time is strictly 11:00 AM.</li>
-            <li>Vinyasa Nilaya is a smoke-free and alcohol-free premises.</li>
-            <li>[Additional conditions will be appended here...]</li>
+            <li class="mb-2"><strong>Identification:</strong> Guests must present a valid, original government-issued photo ID upon arrival for verification.</li>
+            <li class="mb-2"><strong>Right of Admission:</strong> Management reserves the right to decline check-in or residency for non-compliance with house policies.</li>
+            <li class="mb-2"><strong>Timing:</strong> Check-in is scheduled between 12:00 PM – 1:00 PM; Check-out is strictly required by 11:00 AM.</li>
+            <li class="mb-2"><strong>Premises Standards:</strong> Vinyasa Nilaya maintains a strict zero-tolerance policy regarding alcohol, smoking, and the preparation or consumption of non-vegetarian dishes.</li>
+            <li class="mb-2"><strong>Liability:</strong> The guest is held financially responsible for any damages caused to the property, fixtures, or furniture during their stay.</li>
+            <li><strong>Declaration:</strong> I hereby confirm that all information provided is accurate and pledge to adhere to these guidelines throughout my stay at Vinyasa Nilaya.</li>
           </ol>
         </div>
 
@@ -201,17 +206,7 @@
             I accept the Vinyasa Nilaya House Rules & Terms.
           </label>
         </div>
-
-        <div class="p-3 bg-light rounded-4 border-0 shadow-sm">
-          <div class="d-flex align-items-start">
-            <div class="me-3">
-              <input class="form-check-input" type="checkbox" id="detailsVerified" required style="width: 1.25em; height: 1.25em; cursor: pointer;">
-            </div>
-            <label class="form-check-label small fw-semibold text-dark" for="detailsVerified">
-              6. I hereby confirm that all the information provided above is accurate and complete.
-            </label>
-          </div>
-        </div>
+      
       </section>
 
       <button id="submitBtn" class="btn btn-success btn-lg w-100 py-3 fw-bold shadow-sm rounded-pill" onclick="finalSubmit()">
@@ -221,6 +216,12 @@
     </div>
 
     <div id="finalStatus" class="mt-3 text-center"></div>
+    
+    <input type="hidden" id="isExistingGuest" value="false">
+    <input type="hidden" id="rowNumber" value="">
+    <input type="hidden" id="address" value="">
+
+
   </div>  
 </div>
 

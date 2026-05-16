@@ -170,6 +170,16 @@
     filter: grayscale(0.5);
   }
 
+  /* Update this in your Styles.html */
+  .btn-success:disabled {
+    background-color: #198754; /* Standard Bootstrap Success Green */
+    border-color: #198754;
+    opacity: 0.6;              /* This creates the 'disabled' faded look */
+    cursor: not-allowed;
+    filter: none;              /* Ensure no grayscale filter is turning it grey */
+    color: white;
+  }
+
   .badge-verified {
     background: #d1fae5;
     color: var(--success);
