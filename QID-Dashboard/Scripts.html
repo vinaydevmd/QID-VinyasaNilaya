@@ -1,0 +1,126 @@
+<script>
+  window.onload = loadDashboard;
+
+  function loadDashboard() {
+    const year = document.getElementById('filterYear').value;
+    const month = document.getElementById('filterMonth').value;
+    
+    google.script.run
+      .withSuccessHandler(renderDashboard)
+      .getDashboardData(year, month);
+  }
+
+function renderDashboard(data) {
+    // 1. Log the entire raw response from the server
+    console.log(">>> [DEBUG] Server Data Received:", data);
+
+    // 2. Initial Null Check with specific log
+    if (!data) {
+        console.error(">>> [ERROR] Data is null or undefined.");
+        document.getElementById('guest-feed').innerHTML = 
+            '<div class="alert alert-danger mx-3">Error: No response from server.</div>';
+        return;
+    }
+
+    if (!data.summary) {
+        console.error(">>> [ERROR] 'summary' property missing from data object. Data keys found:", Object.keys(data));
+        document.getElementById('guest-feed').innerHTML = 
+            '<div class="alert alert-danger mx-3">Error: Summary data missing.</div>';
+        return;
+    }
+
+    // 3. Log Summary details
+    console.log(">>> [DEBUG] Summary Details:", {
+        revenue: data.summary.totalRevenue,
+        count: data.summary.count,
+        period: data.summary.period
+    });
+
+    // Update Summary UI
+    document.getElementById('stat-revenue').innerText = data.summary.totalRevenue;
+    document.getElementById('stat-count').innerText = data.summary.count;
+    document.getElementById('period-label').innerText = data.summary.period;
+
+    const feed = document.getElementById('guest-feed');
+    feed.innerHTML = '';
+
+    // 4. Log Guest List status
+    if (!data.guests || data.guests.length === 0) {
+        console.warn(">>> [DEBUG] Guest list is empty.");
+        feed.innerHTML = '<div class="text-center mt-5 text-muted">No entries found for this period.</div>';
+        return;
+    }
+    
+    console.log(`>>> [DEBUG] Processing ${data.guests.length} guests.`);
+
+    data.guests.forEach((guest, index) => {
+    const source = guest.Source || "Personal";
+    const sourceClass = source === 'AirBnb' ? 'tag-airbnb' : 'tag-personal';
+    
+    // Use the verification status from the server
+    const isVerified = guest.isVerified || false; 
+
+    // Define the badge HTML using single quotes to avoid backtick nesting errors
+    const badgeHtml = isVerified ? 
+        '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>Verified ID</span>' : 
+        '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;">Pending ID</span>';
+
+  // Check if WhatsApp_Num exists (from Code.gs) and build the button
+    const whatsappBtn = (guest.WhatsApp_Num && guest.WhatsApp_Num.length >= 10) ? 
+        `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" class="btn btn-success rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px; background-color: #25D366; border: none;">
+            <i class="bi bi-whatsapp text-white" style="font-size: 20px;"></i>
+        </a>` : '';
+
+    const card = `
+      <div class="card guest-card shadow-sm p-3 mb-3 border-0">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="source-tag ${sourceClass} fw-bold">${source}</span>
+          ${badgeHtml}
+        </div>
+
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h6 class="fw-bold mb-0">${guest.Name}</h6>
+          <div class="text-warning small">${guest.Customer_Ratings || ''}</div>
+        </div>
+
+        <div class="row g-0 py-2 border-top border-bottom my-2">
+          <div class="col-6 small text-muted">
+            <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">CHECK-IN</div>
+            <div class="text-dark fw-medium">${guest.Check_in_Date || 'N/A'}</div>
+          </div>
+          <div class="col-6 small text-muted text-end border-start ps-2">
+            <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">DURATION</div>
+            <div class="text-dark fw-medium">${guest.Days || 1} Night(s)</div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-1">
+          <div>
+            <div class="h5 fw-bold text-primary mb-0">₹${Number(guest.Amount).toLocaleString('en-IN')}</div>
+            <div class="small text-muted" style="font-size: 11px;">
+              ${guest.Guests || 0} Guests • Floor: ${guest.Floor || '-'}
+            </div>
+          </div>
+          
+          <div class="text-end small text-muted">
+            <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
+          </div>
+        </div>
+
+         ${whatsappBtn}
+        
+        ${guest.Comments ? `
+          <div class="mt-2 pt-2 border-top small text-muted">
+             <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
+          </div>
+        ` : ''}
+      </div>
+
+     
+    `;
+    feed.innerHTML += card;
+  });
+
+   console.log(">>> [DEBUG] Render complete.");
+}
+</script>
