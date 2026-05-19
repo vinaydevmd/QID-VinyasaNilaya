@@ -31,21 +31,30 @@
     </div>
   </div>
 
-  <div class="container mt-n4">
-    <div class="row g-3 mb-4">
-      <div class="col-6">
-        <div class="stat-card shadow-sm p-3 border-0 bg-white">
-          <div class="text-muted small mb-1">Total Amount</div>
-          <h3 id="stat-revenue" class="fw-bold mb-0 text-dark">₹0</h3>
+    <div class="container mt-n4">
+      <div class="row g-3 mb-4">
+        <div class="col-4">
+          <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 12px; height: 100%;">
+            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px;">Total Amount</div>
+            <h3 id="stat-revenue" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.6vw);">₹0</h3>
+          </div>
+        </div>
+        
+        <div class="col-4">
+          <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 12px; height: 100%;">
+            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px;">Check-ins</div>
+            <h3 id="stat-count" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.6vw);">0</h3>
+          </div>
+        </div>
+
+        <div class="col-4">
+          <div class="stat-card shadow-sm p-3 border-0 bg-white text-primary" style="border-radius: 12px; height: 100%; background: linear-gradient(145deg, #ffffff, #fdfdff);">
+            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px; color: #6c757d !important;">Final Total (All) </div>
+            <h3 id="stat-lifetime-revenue" class="fw-bold mb-0 text-primary" style="font-size: calc(1.2rem + 0.6vw);">₹0</h3>
+          </div>
         </div>
       </div>
-      <div class="col-6">
-        <div class="stat-card shadow-sm p-3 border-0 bg-white">
-          <div class="text-muted small mb-1">Check-ins</div>
-          <h3 id="stat-count" class="fw-bold mb-0 text-dark">0</h3>
-        </div>
-      </div>
-    </div>
+  </div>
 
     <div class="d-flex gap-2 mb-4 overflow-auto pb-2" style="white-space: nowrap;">
       <select id="filterYear" class="filter-pill" onchange="refreshDashboardData()">

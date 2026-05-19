@@ -293,6 +293,14 @@ function renderDashboard(data) {
     document.getElementById('stat-count').innerText = data.summary.count;
     document.getElementById('period-label').innerText = data.summary.period;
 
+    // --- COMPONENT UPDATE: Inject the new All-Time Revenue target element value ---
+    const lifetimeEl = document.getElementById('stat-lifetime-revenue');
+    if (lifetimeEl && data.summary.lifetimeRevenue) {
+        lifetimeEl.innerText = '₹' + data.summary.lifetimeRevenue;
+    } else if (lifetimeEl) {
+        lifetimeEl.innerText = '₹0';
+    }
+
     const feed = document.getElementById('guest-feed');
     feed.innerHTML = '';
 

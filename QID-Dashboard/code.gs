@@ -85,9 +85,52 @@ function getAvailableYearsAndInitialize() {
  * Fetches guest data and summaries based on the specific column headers:
  * Year, Month, Name, NoOfGuests, Amount, Check-in Date, Days, AirBnb\Personal, Floor, Mobile, Customer Ratings, Comments
  */
+
 function getDashboardData(filterYear, filterMonth) {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
+    const sheets = ss.getSheets();
+    
+    // -----------------------------------------------------------------
+    // PHASE 1: COMPUTE CONSOLIDATED LIFETIME REVENUE ACROSS ALL YEARS
+    // -----------------------------------------------------------------
+    let lifetimeTotalRevenue = 0;
+
+    sheets.forEach(sheet => {
+      const sheetName = sheet.getName().trim();
+      
+      // Isolate sheets that match a 4-digit year pattern (e.g., "2024", "2026")
+      if (/^\d{4}$/.test(sheetName)) {
+        const sheetData = sheet.getDataRange().getValues();
+        const headerRowIdx = sheetData.findIndex(row => row.includes("Name") || row.includes("Amount"));
+        
+        if (headerRowIdx !== -1) {
+          const sheetHeaders = sheetData[headerRowIdx];
+          const amountIdx = sheetHeaders.indexOf("Amount");
+          const nameIdx = sheetHeaders.indexOf("Name");
+          
+          if (amountIdx !== -1) {
+            // Unpack rows beneath the header row
+            const sheetRows = sheetData.slice(headerRowIdx + 1);
+            
+            sheetRows.forEach(row => {
+              const nameVal = row[nameIdx] ? row[nameIdx].toString().trim() : "";
+              
+              // Standard safety exclusions to match your row filter baseline
+              if (!nameVal || nameVal === "Total" || nameVal === "No Guests" || nameVal === "") return;
+              
+              let amtStr = (row[amountIdx] || "0").toString().replace(/[₹,]/g, "");
+              let amtNum = Number(amtStr) || 0;
+              lifetimeTotalRevenue += amtNum;
+            });
+          }
+        }
+      }
+    });
+
+    // -----------------------------------------------------------------
+    // PHASE 2: PROCESSING SELECTED FOCUS TARGET SHEET DATA
+    // -----------------------------------------------------------------
     const targetTab = filterYear;
     let sheet = ss.getSheetByName(targetTab) || ss.getSheets()[0];
 
@@ -96,7 +139,15 @@ function getDashboardData(filterYear, filterMonth) {
     const headerRowIndex = data.findIndex(row => row.includes("Name") || row.includes("Month"));
 
     if (headerRowIndex === -1) {
-      return { guests: [], summary: { totalRevenue: "₹0", count: 0, period: "No Headers Found" } };
+      return { 
+        guests: [], 
+        summary: { 
+          totalRevenue: "₹0", 
+          count: 0, 
+          period: "No Headers Found",
+          lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN') 
+        } 
+      };
     }
 
     const headers = data[headerRowIndex];
@@ -156,14 +207,16 @@ function getDashboardData(filterYear, filterMonth) {
     return {
       guests: filteredData,
       summary: {
-        totalRevenue: totalRevenue.toLocaleString('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }),
+        totalRevenue: totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 }).replace("INR", "").trim(),
         count: guestCount,
-        period: filterMonth ? `${filterMonth} ${targetTab}` : targetTab
+        period: filterMonth ? `${filterMonth} ${targetTab}` : targetTab,
+        // --- ADDED NEW CORE CHARACTERISTICS ---
+        lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })
       }
     };
   } catch (err) {
     console.error("Dashboard Sync Error: " + err.message);
-    return { guests: [], summary: { totalRevenue: "Error", count: 0, period: "Sheet Error" } };
+    return { guests: [], summary: { totalRevenue: "Error", count: 0, period: "Sheet Error", lifetimeRevenue: "Error" } };
   }
 }
 
