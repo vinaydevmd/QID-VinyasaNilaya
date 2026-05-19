@@ -1,15 +1,198 @@
 <script>
   window.onload = loadDashboard;
 
-  function loadDashboard() {
-    const year = document.getElementById('filterYear').value;
-    const month = document.getElementById('filterMonth').value;
-    
-    google.script.run
-      .withSuccessHandler(renderDashboard)
-      .getDashboardData(year, month);
+  // Global scope memory variables to act as the single source of truth locally
+  window.dashboardCache = null;
+
+  /**
+   * High-performance data bridge entry point.
+   * Checks for a cached state before triggering a slow server-side fetch.
+   */
+  function loadDashboard(forcedRefresh = false) {
+      const yearEl = document.getElementById('filterYear');
+      // Reads whatever is currently selected in your live dropdown, falling back to current calendar year
+      const selectedYear = yearEl && yearEl.value ? yearEl.value : new Date().getFullYear().toString();
+
+      // Context check: If data is already cached locally and this is a standard filter switch, use it!
+      if (window.dashboardCache && !forcedRefresh) {
+          console.log(">>> [PERFORMANCE] Serving view from local memory allocation cache.");
+          processAndFilterData(window.dashboardCache);
+          return;
+      }
+
+      // Otherwise, toggle loading animation state and make the server call
+      toggleRefreshLoadingState(true);
+      console.log(">>> [NETWORK] Pulling fresh data stream from server ledger...");
+
+      google.script.run
+          .withSuccessHandler(function(response) {
+              toggleRefreshLoadingState(false);
+              
+              // Commit payload directly into memory
+              window.dashboardCache = response;
+              
+              // Route payload into the visual layout processors
+              processAndFilterData(response);
+          })
+          .withFailureHandler(function(err) {
+              toggleRefreshLoadingState(false);
+              console.error(">>> [CRITICAL] Ledger network grab failed: ", err.message);
+              document.getElementById('guest-feed').innerHTML = 
+                  `<div class="alert alert-danger mx-3">Failed to load real-time database data: ${err.message}</div>`;
+          })
+          .getDashboardData(selectedYear);
   }
 
+  /**
+   * User action script bound directly to the new refresh icon button
+   */
+  function refreshDashboardData() {
+      console.log(">>> [ACTION] Refresh button clicked. Evicting data cache...");
+      loadDashboard(true); // Sends 'true' to force a fresh pull from the server
+  }
+
+  /**
+   * Handle filtering instantaneously in client-side memory
+   */
+  function handleMonthChange() {
+      if (window.dashboardCache) {
+          processAndFilterData(window.dashboardCache);
+      } else {
+          loadDashboard();
+      }
+  }
+
+  /**
+ * Process calculations and filter the dataset locally without striking the server again
+ */
+function processAndFilterData(rawData) {
+    if (!rawData) return;
+    
+    // Deep clone the object to keep structural mutations cleanly isolated
+    let dataCopy = JSON.parse(JSON.stringify(rawData));
+    
+    // Target your HTML dropdown element ID
+    const monthFilterEl = document.getElementById('filterMonth');
+    const targetMonth = monthFilterEl ? monthFilterEl.value : "All";
+    
+    const yearFilterEl = document.getElementById('filterYear');
+    // Dynamically defaults to the current calendar year instead of a fixed string
+    const currentYear = yearFilterEl ? yearFilterEl.value : new Date().getFullYear().toString();
+
+    console.log(`>>> [UI] Running memory cache filter for target state: [${targetMonth}]`);
+
+    // Filter elements instantly in memory if a specific month is selected
+    if (targetMonth !== "All" && dataCopy.guests) {
+        let workingArray = Array.isArray(dataCopy.guests) ? dataCopy.guests : Object.values(dataCopy.guests);
+        
+        // BULLETPROOF FILTER: Matches short abbreviations (May) OR full names (May) dynamically
+        let filteredArray = workingArray.filter(g => {
+            if (!g.Month) return false;
+            
+            const recordMonth = String(g.Month).trim().toLowerCase();
+            const selectedFilter = targetMonth.toLowerCase();
+            
+            // Returns true if the record month starts with or equals the filter selection
+            return recordMonth.startsWith(selectedFilter) || selectedFilter.startsWith(recordMonth);
+        });
+        
+        // Compute updated dashboard KPI cards metric data dynamically based on filtered set
+        let runningRevenue = 0;
+        filteredArray.forEach(g => {
+            let amt = parseFloat(String(g.Amount).replace(/,/g, '')) || 0;
+            runningRevenue += amt;
+        });
+
+        dataCopy.guests = filteredArray;
+        dataCopy.summary.totalRevenue = runningRevenue.toLocaleString('en-IN');
+        dataCopy.summary.count = filteredArray.length;
+        dataCopy.summary.period = `${targetMonth} ${currentYear} Collection Summary`;
+    }
+
+    // Ship directly to your polished, reversed render engine layout view
+    renderDashboard(dataCopy);
+}
+
+  /**
+   * UI loading toggle helper function to animate icons smoothly
+   */
+  function toggleRefreshLoadingState(isLoading) {
+      const icon = document.getElementById('refresh-icon');
+      const spinner = document.getElementById('refresh-spinner');
+      const btn = document.getElementById('refresh-dashboard-btn');
+      
+      if (!icon || !spinner || !btn) return;
+
+      if (isLoading) {
+          icon.classList.add('d-none');
+          spinner.classList.remove('d-none');
+          btn.disabled = true;
+      } else {
+          icon.classList.remove('d-none');
+          spinner.classList.add('d-none');
+          btn.disabled = false;
+      }
+  }
+
+  // Ensure tooltips map correctly to the fresh elements on lifecycle load sequence
+  document.addEventListener("DOMContentLoaded", function() {
+      if (typeof initTooltips === 'function') initTooltips();
+      loadDashboard(); // Core boot sequence initialization logic trigger
+  });
+
+/**
+ * Initializes the dashboard lifecycle. Resolves available year tabs,
+ * updates the filter options, and sets the dashboard to the current year.
+ */
+function initializeDashboardLifecycle() {
+    console.log(">>> [BOOT] Querying live database tab names...");
+    
+    google.script.run
+        .withSuccessHandler(function(config) {
+            const yearDropdown = document.getElementById('filterYear');
+            if (!yearDropdown) return;
+            
+            // Clear out any old elements safely
+            yearDropdown.innerHTML = '';
+            
+            // Populate options dynamically from real Google Sheets structures
+            config.years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.innerText = year;
+                
+                // Set active matching selection on initial render state
+                if (year === config.activeYear) {
+                    option.selected = true;
+                }
+                yearDropdown.appendChild(option);
+            });
+            
+            console.log(`>>> [BOOT] Year filters armed: [${config.years.join(', ')}]. Active year defaults to: [${config.activeYear}].`);
+            
+            // Kickstart standard dashboard data fetch using the dynamically evaluated selected year state
+            loadDashboard();
+        })
+        .withFailureHandler(function(err) {
+            console.error(">>> [BOOT CRASH] System failed to inventory layout years: ", err.message);
+            // Hard fallback if connectivity issues happen on configuration query
+            const yearDropdown = document.getElementById('filterYear');
+            if (yearDropdown) {
+                yearDropdown.innerHTML = `<option value="${new Date().getFullYear()}">${new Date().getFullYear()}</option>`;
+            }
+            loadDashboard();
+        })
+        .getAvailableYearsAndInitialize();
+}
+
+// Redirect your page initialization anchor to target the new boot method
+document.addEventListener("DOMContentLoaded", function() {
+    if (typeof initTooltips === 'function') initTooltips();
+    
+    // Instead of calling loadDashboard() directly, hit the year configurations analyzer first!
+    initializeDashboardLifecycle(); 
+});
+ 
 function renderDashboard(data) {
     // 1. Log the entire raw response from the server
     console.log(">>> [DEBUG] Server Data Received:", data);
@@ -53,7 +236,30 @@ function renderDashboard(data) {
     
     console.log(`>>> [DEBUG] Processing ${data.guests.length} guests.`);
 
-    data.guests.forEach((guest, index) => {
+    // --- FORCE CONVERT TYPE TO GUARANTEE A CLEAN REVERSAL ---
+    let normalizedGuests = [];
+    
+    if (Array.isArray(data.guests)) {
+        // If it is a real array, shallow copy it safely
+        normalizedGuests = data.guests.slice();
+    } else if (typeof data.guests === 'object') {
+        // If Google serialized it as an object dictionary, extract the item values sequentially
+        normalizedGuests = Object.keys(data.guests)
+                                 .sort((a, b) => Number(a) - Number(b))
+                                 .map(key => data.guests[key]);
+    }
+
+    // Double check that we actually have populated booking elements to loop through
+    if (normalizedGuests.length === 0) {
+        console.warn(">>> [DEBUG] Normalized array tracking registers 0 entries.");
+        feed.innerHTML = '<div class="text-center mt-5 text-muted">No entries found for this period.</div>';
+        return;
+    }
+
+    // Execute the array inversion layout order
+    const invertedGuestFeed = normalizedGuests.reverse();
+
+    invertedGuestFeed.forEach((guest, index) => {
     const source = guest.Source || "Personal";
     const sourceClass = source === 'AirBnb' ? 'tag-airbnb' : 'tag-personal';
     
@@ -65,11 +271,13 @@ function renderDashboard(data) {
         '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>Verified ID</span>' : 
         '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;">Pending ID</span>';
 
-  // Check if WhatsApp_Num exists (from Code.gs) and build the button
+    // Check if WhatsApp_Num exists (from Code.gs) and build the button
     const whatsappBtn = (guest.WhatsApp_Num && guest.WhatsApp_Num.length >= 10) ? 
-        `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" class="btn btn-success rounded-circle d-flex align-items-center justify-content-center shadow-sm" style="width: 40px; height: 40px; background-color: #25D366; border: none;">
-            <i class="bi bi-whatsapp text-white" style="font-size: 20px;"></i>
-        </a>` : '';
+    `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" 
+        class="btn btn-success rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm ms-3" 
+        style="width: 24px; height: 24px; background-color: #25D366; border: none; padding: 0; min-width: 24px;">
+        <i class="bi bi-whatsapp text-white" style="font-size: 13px; line-height: 1;"></i>
+    </a>` : '';
 
     const card = `
       <div class="card guest-card shadow-sm p-3 mb-3 border-0">
@@ -78,9 +286,12 @@ function renderDashboard(data) {
           ${badgeHtml}
         </div>
 
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <h6 class="fw-bold mb-0">${guest.Name}</h6>
-          <div class="text-warning small">${guest.Customer_Ratings || ''}</div>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center" style="max-width: 75%;">
+            <h6 class="fw-bold mb-0 text-truncate" style="line-height: 1.2;">${guest.Name}</h6>
+            ${whatsappBtn}
+          </div>
+          <div class="text-warning small ms-2" style="white-space: nowrap;">${guest.Customer_Ratings || ''}</div>
         </div>
 
         <div class="row g-0 py-2 border-top border-bottom my-2">
@@ -106,9 +317,7 @@ function renderDashboard(data) {
             <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
           </div>
         </div>
-
-         ${whatsappBtn}
-        
+                 
         ${guest.Comments ? `
           <div class="mt-2 pt-2 border-top small text-muted">
              <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
@@ -120,7 +329,100 @@ function renderDashboard(data) {
     `;
     feed.innerHTML += card;
   });
-
    console.log(">>> [DEBUG] Render complete.");
+}
+
+/*Airbnb Sync through emails*/
+function triggerAirbnbSync() {
+    const icon = document.getElementById('sync-icon');
+    const spinner = document.getElementById('sync-spinner');
+    const btn = document.getElementById('sync-btn');
+
+    // 1. Dynamically read the exact year the user is looking at right now
+    const yearEl = document.getElementById('filterYear');
+    const activeDashboardYear = yearEl ? yearEl.value : new Date().getFullYear().toString();
+    
+    // Switch to loading state
+    icon.classList.add('d-none');
+    spinner.classList.remove('d-none');
+    btn.disabled = true;
+
+    // Call the Google Apps Script Backend
+    google.script.run
+        .withSuccessHandler(function(result) {
+            // Restore button state
+            icon.classList.remove('d-none');
+            spinner.classList.add('d-none');
+            btn.disabled = false;
+            
+            // 3. Populate and trigger the Premium Custom Modal UI
+            document.getElementById('syncModalTitle').innerText = "Sync Successful";
+            document.getElementById('syncModalMessage').innerText = result || "Airbnb confirmation emails read and cataloged perfectly.";
+            
+            const successModal = new bootstrap.Modal(document.getElementById('syncResultModal'));
+            successModal.show();
+            
+            // Refresh dashboard data automatically if your fetch function is named loadDashboard
+            if (typeof loadDashboard === 'function') loadDashboard(); 
+        })
+        .withFailureHandler(function(err) {
+            icon.classList.remove('d-none');
+            spinner.classList.add('d-none');
+            btn.disabled = false;
+            //alert("Sync Failed: " + err.message);
+            // Display error gracefully within the same styled modal context frame
+            document.getElementById('syncModalTitle').innerText = "Sync Deferred";
+            document.getElementById('syncModalMessage').innerText = "System encountered an error: " + err.message;
+            
+            const errorModal = new bootstrap.Modal(document.getElementById('syncResultModal'));
+            errorModal.show();
+        })
+        .syncAirbnbEmails(activeDashboardYear); // Calls the backend function
+}
+
+// Automatically initialize all Bootstrap tooltips on the page load sequence
+document.addEventListener("DOMContentLoaded", function() {
+    const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+            boundary: document.body,
+            trigger : 'hover' // Guarantees it disappears cleanly immediately when clicked
+        });
+    });
+});
+
+// A comprehensive, bulletproof way to initialize Bootstrap tooltips
+function initTooltips() {
+  try {
+    // 1. Verify Bootstrap's JavaScript library is safely loaded in the memory ecosystem
+    if (typeof bootstrap !== 'undefined' && bootstrap.Tooltip) {
+      const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      
+      tooltipTriggerList.map(function (tooltipTriggerEl) {
+        // Clean up any old instances before rebuilding to prevent detached memory leaks
+        const oldInstance = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
+        if (oldInstance) oldInstance.dispose();
+        
+        return new bootstrap.Tooltip(tooltipTriggerEl, {
+          boundary: document.body,
+          trigger: 'hover',
+          fallbackPlacements: ['top', 'left'] // Automatically adjusts if screen space is tight on mobile
+        });
+      });
+      console.log(">>> [UI] Bootstrap Tooltips successfully bound and armed.");
+    } else {
+      console.warn(">>> [UI] Bootstrap JS library missing. Retrying in 500ms...");
+      setTimeout(initTooltips, 500); // Retry loop structure if script load tags are lagging
+    }
+  } catch (err) {
+    console.error("Tooltip engine init failed: ", err);
+  }
+}
+
+// Trigger initialization on both standard DOM ready statuses
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTooltips);
+} else {
+    initTooltips(); // Execute immediately if DOM elements are already structurally hot
 }
 </script>
