@@ -30,6 +30,10 @@
               
               // Commit payload directly into memory
               window.dashboardCache = response;
+
+              if (response && response.guests) {
+                  rebuildMonthDropdown(response.guests);
+              }
               
               // Route payload into the visual layout processors
               processAndFilterData(response);
@@ -192,7 +196,72 @@ document.addEventListener("DOMContentLoaded", function() {
     // Instead of calling loadDashboard() directly, hit the year configurations analyzer first!
     initializeDashboardLifecycle(); 
 });
- 
+
+/**
+ * Dynamically rebuilds the Month Dropdown based exclusively on months 
+ * that actually exist in the loaded dataset for the selected year.
+ */
+/**
+ * Dynamically rebuilds the Month Dropdown chronologically (January -> December)
+ * based exclusively on data rows present in the active sheet year.
+ */
+function rebuildMonthDropdown(guests) {
+    const monthDropdown = document.getElementById('filterMonth');
+    if (!monthDropdown) return;
+
+    // 1. Save the user's active filter viewport selection before wiping elements
+    const previousSelection = monthDropdown.value || "";
+
+    // 2. Reset dropdown container with the constant baseline master switch
+    monthDropdown.innerHTML = '<option value="">All Months</option>';
+
+    if (!guests) return;
+
+    // Normalize incoming data format structure down to a real collection loop wrapper
+    const guestList = Array.isArray(guests) ? guests : Object.values(guests);
+
+    // 3. Extract completely unique month names present in your ledger data
+    const uniqueMonths = [];
+    guestList.forEach(g => {
+        if (g.Month && g.Month.trim() !== "") {
+            // Capitalize first letter to guarantee matching consistency (e.g. "may" -> "May")
+            const m = g.Month.trim().charAt(0).toUpperCase() + g.Month.trim().slice(1).toLowerCase();
+            if (!uniqueMonths.includes(m)) {
+                uniqueMonths.push(m);
+            }
+        }
+    });
+
+    // 4. FIXED CHRONOLOGICAL ORDER DICTIONARY: Maps full names to calendar metrics
+    const calendarSequence = { 
+        "January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6, 
+        "July": 7, "August": 8, "September": 9, "October": 10, "November": 11, "December": 12 
+    };
+    
+    // Sort array entries mathematically from 1 up to 12
+    uniqueMonths.sort((a, b) => (calendarSequence[a] || 99) - (calendarSequence[b] || 99));
+
+    // 5. Generate and append the option tags dynamically into your view component
+    uniqueMonths.forEach(monthName => {
+        const option = document.createElement('option');
+        option.value = monthName;      // Sets structural matching value to full word (e.g., "January")
+        option.innerText = monthName;  // Sets readable interface presentation label
+        
+        // Retain the user's active focus if it matches an option in the new dataset
+        if (monthName === previousSelection) {
+            option.selected = true;
+        }
+        
+        monthDropdown.appendChild(option);
+    });
+
+    // If their active filter doesn't exist in this specific historical year, reset the look cleanly to "All"
+    if (previousSelection && !uniqueMonths.includes(previousSelection)) {
+        monthDropdown.value = "";
+    }
+}
+
+/*Render dashboard */
 function renderDashboard(data) {
     // 1. Log the entire raw response from the server
     console.log(">>> [DEBUG] Server Data Received:", data);

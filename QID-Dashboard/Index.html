@@ -51,31 +51,19 @@
       <select id="filterYear" class="filter-pill" onchange="refreshDashboardData()">
       </select>
       <select id="filterMonth" class="filter-pill" onchange="handleMonthChange()">
-          <option value="">All Months</option>
-          <option value="January">January</option>
-          <option value="February">February</option>
-          <option value="March">March</option>
-          <option value="April">April</option>
-          <option value="May">May</option>
-          <option value="June">June</option>
-          <option value="July">July</option>
-          <option value="August">August</option>
-          <option value="September">September</option>
-          <option value="October">October</option>
-          <option value="November">November</option>
-          <option value="December">December</option>
-        </select>
+      <option value="All">All Months</option>
+      </select>
 
-        <button class="btn btn-light btn-sm rounded-3 d-flex align-items-center justify-content-center p-0  shadow-sm border-0" 
-                id="refresh-dashboard-btn" 
-                onclick="refreshDashboardData()" 
-                data-bs-toggle="tooltip" 
-                data-bs-placement="bottom" 
-                data-bs-title="Refresh Guests" 
-                style="width: 32px; height: 32px; background-color: #ffffff;">
-          <i class="bi bi-arrow-clockwise text-muted fs-6" id="refresh-icon"></i>
-          <span class="spinner-border spinner-border-sm text-muted d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
-        </button>
+      <button class="btn btn-light btn-sm rounded-3 d-flex align-items-center justify-content-center p-0  shadow-sm border-0" 
+          id="refresh-dashboard-btn" 
+          onclick="refreshDashboardData()" 
+          data-bs-toggle="tooltip" 
+          data-bs-placement="bottom" 
+          data-bs-title="Refresh Guests" 
+          style="width: 32px; height: 32px; background-color: #ffffff;">
+        <i class="bi bi-arrow-clockwise text-muted fs-6" id="refresh-icon"></i>
+        <span class="spinner-border spinner-border-sm text-muted d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
+      </button>
     </div>
 
     <div id="guest-feed" class="pb-5">
