@@ -66,56 +66,103 @@
       }
   }
 
-  /**
- * Process calculations and filter the dataset locally without striking the server again
+/**
+ * Consolidated Change Handler triggered by any dropdown state updates
  */
-function processAndFilterData(rawData) {
-    if (!rawData) return;
-    
-    // Deep clone the object to keep structural mutations cleanly isolated
-    let dataCopy = JSON.parse(JSON.stringify(rawData));
-    
-    // Target your HTML dropdown element ID
-    const monthFilterEl = document.getElementById('filterMonth');
-    const targetMonth = monthFilterEl ? monthFilterEl.value : "All";
-    
-    const yearFilterEl = document.getElementById('filterYear');
-    // Dynamically defaults to the current calendar year instead of a fixed string
-    const currentYear = yearFilterEl ? yearFilterEl.value : new Date().getFullYear().toString();
-
-    console.log(`>>> [UI] Running memory cache filter for target state: [${targetMonth}]`);
-
-    // Filter elements instantly in memory if a specific month is selected
-    if (targetMonth !== "All" && dataCopy.guests) {
-        let workingArray = Array.isArray(dataCopy.guests) ? dataCopy.guests : Object.values(dataCopy.guests);
-        
-        // BULLETPROOF FILTER: Matches short abbreviations (May) OR full names (May) dynamically
-        let filteredArray = workingArray.filter(g => {
-            if (!g.Month) return false;
-            
-            const recordMonth = String(g.Month).trim().toLowerCase();
-            const selectedFilter = targetMonth.toLowerCase();
-            
-            // Returns true if the record month starts with or equals the filter selection
-            return recordMonth.startsWith(selectedFilter) || selectedFilter.startsWith(recordMonth);
-        });
-        
-        // Compute updated dashboard KPI cards metric data dynamically based on filtered set
-        let runningRevenue = 0;
-        filteredArray.forEach(g => {
-            let amt = parseFloat(String(g.Amount).replace(/,/g, '')) || 0;
-            runningRevenue += amt;
-        });
-
-        dataCopy.guests = filteredArray;
-        dataCopy.summary.totalRevenue = runningRevenue.toLocaleString('en-IN');
-        dataCopy.summary.count = filteredArray.length;
-        dataCopy.summary.period = `${targetMonth} ${currentYear} Collection Summary`;
+function handleFilterChange() {
+    if (window.dashboardCache) {
+        processAndFilterData(window.dashboardCache);
     }
-
-    // Ship directly to your polished, reversed render engine layout view
-    renderDashboard(dataCopy);
 }
+
+  /**
+   * Process calculations and filter the dataset locally without striking the server again
+   */
+  function processAndFilterData(rawData) {
+      if (!rawData) return;
+      
+      // 1. Deep clone the object to keep structural mutations cleanly isolated
+      let dataCopy = JSON.parse(JSON.stringify(rawData));
+      
+      // 2. Safely read ALL live UI filter states from the dashboard
+      const monthFilterEl = document.getElementById('filterMonth');
+      const targetMonth = monthFilterEl ? monthFilterEl.value : "All";
+      
+      const yearFilterEl = document.getElementById('filterYear');
+      const currentYear = yearFilterEl ? yearFilterEl.value : new Date().getFullYear().toString();
+
+      const sourceFilterEl = document.getElementById('filterSource');
+      const targetSource = sourceFilterEl ? sourceFilterEl.value : "All";
+
+      const floorFilterEl = document.getElementById('filterFloor');
+      const targetFloor = floorFilterEl ? floorFilterEl.value : "All";
+
+      console.log(`>>> [UI] Multi-Filter Execution: [Month: ${targetMonth}] | [Source: ${targetSource}] | [Floor: ${targetFloor}]`);
+
+      // 3. Extract your baseline working guest list array layout
+      let workingArray = Array.isArray(dataCopy.guests) ? dataCopy.guests : Object.values(dataCopy.guests);
+      
+      // 4. THE UNIFIED FILTER MATRIX: Evaluates all dimensions simultaneously
+      let filteredArray = workingArray.filter(g => {
+          // --- Dimension A: Month Matching ---
+          let matchMonth = true;
+          if (targetMonth !== "All" && targetMonth !== "") {
+              if (!g.Month) return false;
+              const recordMonth = String(g.Month).trim().toLowerCase();
+              const selectedMonth = targetMonth.toLowerCase();
+              matchMonth = recordMonth.startsWith(selectedMonth) || selectedMonth.startsWith(recordMonth);
+          }
+
+          // --- Dimension B: Booking Source Matching (Airbnb vs Personal) ---
+          const guestSource = g.Source ? g.Source.toString().trim().toLowerCase() : "";
+          const matchSource = (targetSource === "All" || guestSource === targetSource.toLowerCase());
+
+          // --- Dimension C: Property Floor Assignment Matching ---
+          const guestFloor = g.Floor ? g.Floor.toString().trim().toLowerCase() : "";
+          const selectedFloor = targetFloor.toLowerCase();
+
+          let matchFloor = false;
+          if (targetFloor === "All" || targetFloor === "") {
+              matchFloor = true;
+          } else {
+              // Allows partial matching so "Ground Floor" matches "Ground" and vice versa
+              matchFloor = guestFloor.includes(selectedFloor) || selectedFloor.includes(guestFloor);
+          }
+
+          // Include row only if it clears all active viewport boundary rules
+          return matchMonth && matchSource && matchFloor;
+      });
+      
+      // 5. COMPUTE KPI METRICS: Always calculate totals on the final filtered subset
+      let runningRevenue = 0;
+      filteredArray.forEach(g => {
+          let amtStr = g.Amount ? String(g.Amount).replace(/[₹,]/g, '') : "0";
+          let amt = parseFloat(amtStr) || 0;
+          runningRevenue += amt;
+      });
+
+      // 6. Assemble dynamic UI presentation labels based on current states
+      let periodLabel = "";
+      if (targetMonth === "All" || targetMonth === "") {
+          periodLabel = `All Months ${currentYear}`;
+      } else {
+          periodLabel = `${targetMonth} ${currentYear}`;
+      }
+
+      // Append filter terms to label if they aren't set to "All" for clear tracking context
+      if (targetSource !== "All") periodLabel += ` (${targetSource})`;
+      if (targetFloor !== "All") periodLabel += ` (${targetFloor})`;
+
+      // 7. Commit new data states back to the temporary payload copy
+      dataCopy.guests = filteredArray;
+      dataCopy.summary.totalRevenue = runningRevenue.toLocaleString('en-IN');
+      dataCopy.summary.count = filteredArray.length;
+      dataCopy.summary.period = `${periodLabel} Collection Summary`;
+
+      // 8. Ship straight into your polished, reversed render engine layout view
+      renderDashboard(dataCopy);
+  }
+
 
   /**
    * UI loading toggle helper function to animate icons smoothly
@@ -294,11 +341,15 @@ function renderDashboard(data) {
     document.getElementById('period-label').innerText = data.summary.period;
 
     // --- COMPONENT UPDATE: Inject the new All-Time Revenue target element value ---
-    const lifetimeEl = document.getElementById('stat-lifetime-revenue');
-    if (lifetimeEl && data.summary.lifetimeRevenue) {
-        lifetimeEl.innerText = '₹' + data.summary.lifetimeRevenue;
-    } else if (lifetimeEl) {
-        lifetimeEl.innerText = '₹0';
+    const lifetimeRevEl = document.getElementById('stat-lifetime-revenue');
+    const lifetimeCountEl = document.getElementById('stat-lifetime-count');
+
+    if (lifetimeRevEl && data.summary.lifetimeRevenue) {
+        lifetimeRevEl.innerText = '₹' + data.summary.lifetimeRevenue;
+    }
+    
+    if (lifetimeCountEl && data.summary.lifetimeCount !== undefined) {
+        lifetimeCountEl.innerText = data.summary.lifetimeCount.toLocaleString('en-IN');
     }
 
     const feed = document.getElementById('guest-feed');
@@ -418,6 +469,8 @@ function triggerAirbnbSync() {
     // 1. Dynamically read the exact year the user is looking at right now
     const yearEl = document.getElementById('filterYear');
     const activeDashboardYear = yearEl ? yearEl.value : new Date().getFullYear().toString();
+
+     console.log("activeDashboardYear :", activeDashboardYear);
     
     // Switch to loading state
     icon.classList.add('d-none');
@@ -440,7 +493,7 @@ function triggerAirbnbSync() {
             successModal.show();
             
             // Refresh dashboard data automatically if your fetch function is named loadDashboard
-            if (typeof loadDashboard === 'function') loadDashboard(); 
+            loadDashboard(true); 
         })
         .withFailureHandler(function(err) {
             icon.classList.remove('d-none');

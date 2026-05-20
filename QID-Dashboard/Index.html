@@ -10,69 +10,110 @@
 </head>
 
 <body>
-  <div class="header-banner shadow-sm" style="background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);">
-    <div class="container py-3 d-flex justify-content-between align-items-center">
-      <h5 class="mb-0 fw-bold text-white">Vinyasa Nilaya Dashboard</h5>
+  
+  <div class="header-banner shadow-sm" style="background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%); padding-bottom: 24px;">
+    <div class="container pt-3">
       
-      <div class="d-flex align-items-center gap-2">
-        <div class="badge bg-white text-primary rounded-pill px-3 py-2 fw-semibold" id="period-label">2026</div>
+      <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 fw-bold text-white">Vinyasa Nilaya Dashboard</h5>
         
-        <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm" 
-          id="sync-btn" 
-          onclick="triggerAirbnbSync()" 
-          data-bs-toggle="tooltip" 
-          data-bs-placement="bottom" 
-          data-bs-title="Sync Airbnb Bookings" 
-          style="width: 34px; height: 34px; border: none;">
-            <i class="bi bi-arrow-repeat text-primary fs-5" id="sync-icon"></i>
-          <span class="spinner-border spinner-border-sm text-primary d-none" id="sync-spinner" role="status"></span>
-        </button>
+        <div class="d-flex align-items-center gap-2">
+          
+          <button class="btn btn-light btn-sm rounded-3 d-flex align-items-center justify-content-center p-0  shadow-sm border-0" 
+              id="refresh-dashboard-btn" 
+              onclick="refreshDashboardData()" 
+              data-bs-toggle="tooltip" 
+              data-bs-placement="bottom" 
+              data-bs-title="Refresh Guests" 
+              style="width: 32px; height: 32px; background-color: #ffffff;">
+            <i class="bi bi-arrow-clockwise text-muted fs-6" id="refresh-icon"></i>
+            <span class="spinner-border spinner-border-sm text-muted d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
+          </button>
+
+          <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm" 
+            id="sync-btn" 
+            onclick="triggerAirbnbSync()" 
+            data-bs-toggle="tooltip" 
+            data-bs-placement="bottom" 
+            data-bs-title="Sync Airbnb Bookings" 
+            style="width: 34px; height: 34px; border: none;">
+              <i class="bi bi-arrow-repeat text-primary fs-5" id="sync-icon"></i>
+            <span class="spinner-border spinner-border-sm text-primary d-none" id="sync-spinner" role="status"></span>
+          </button>
+
+        </div>
       </div>
+
+      <div class="mt-2 d-flex align-items-center">
+        <div class="badge rounded-pill fw-semibold shadow-sm text-start" id="period-label" 
+            style="background-color: rgba(255, 255, 255, 0.2); color: #ffffff; padding: 6px 14px; font-size: 11px; letter-spacing: 0.4px; border: 1px solid rgba(255, 255, 255, 0.1); display: inline-block; max-width: 100%; white-space: normal; word-break: break-word;">
+          Initializing...
+        </div>
+      </div>
+
     </div>
   </div>
 
-    <div class="container mt-n4">
-      <div class="row g-3 mb-4">
-        <div class="col-4">
-          <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 12px; height: 100%;">
-            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px;">Total Amount</div>
-            <h3 id="stat-revenue" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.6vw);">₹0</h3>
-          </div>
-        </div>
-        
-        <div class="col-4">
-          <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 12px; height: 100%;">
-            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px;">Check-ins</div>
-            <h3 id="stat-count" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.6vw);">0</h3>
-          </div>
-        </div>
 
-        <div class="col-4">
-          <div class="stat-card shadow-sm p-3 border-0 bg-white text-primary" style="border-radius: 12px; height: 100%; background: linear-gradient(145deg, #ffffff, #fdfdff);">
-            <div class="text-muted small mb-1" style="font-size: 11px; letter-spacing: 0.3px; color: #6c757d !important;">Final Total (All) </div>
-            <h3 id="stat-lifetime-revenue" class="fw-bold mb-0 text-primary" style="font-size: calc(1.2rem + 0.6vw);">₹0</h3>
+  <div class="container mt-n4">
+    <div class="row g-2 mb-2">
+      <div class="col-6">
+        <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 14px; border-left: 4px solid #4a5568 !important;">
+          <div class="fw-bold text-uppercase mb-1" style="font-size: 10px; letter-spacing: 0.8px; color: #718096 !important;">
+            Period Revenue
           </div>
+          <h3 id="stat-revenue" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.4vw); letter-spacing: -0.5px;">₹0</h3>
         </div>
       </div>
+      
+      <div class="col-6">
+        <div class="stat-card shadow-sm p-3 border-0 bg-white" style="border-radius: 14px; border-left: 4px solid #4a5568 !important;">
+          <div class="fw-bold text-uppercase mb-1" style="font-size: 10px; letter-spacing: 0.8px; color: #718096 !important;">
+            Period Check-Ins
+          </div>
+          <h3 id="stat-count" class="fw-bold mb-0 text-dark" style="font-size: calc(1.2rem + 0.4vw); letter-spacing: -0.5px;">0</h3>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-4">
+      <div class="col-6">
+        <div class="stat-card shadow-sm p-3 border-0" style="border-radius: 14px; border-left: 4px solid #0d6efd !important; background: linear-gradient(145deg, #ffffff, #f4f7ff);">
+          <div class="fw-bold text-uppercase mb-1" style="font-size: 10px; letter-spacing: 0.8px; color: #0d6efd !important;">
+            All-Time Total
+          </div>
+          <h3 id="stat-lifetime-revenue" class="fw-bold mb-0 text-primary" style="font-size: calc(1.2rem + 0.4vw); letter-spacing: -0.5px;">₹0</h3>
+        </div>
+      </div>
+      
+      <div class="col-6">
+        <div class="stat-card shadow-sm p-3 border-0" style="border-radius: 14px; border-left: 4px solid #0d6efd !important; background: linear-gradient(145deg, #ffffff, #f4f7ff);">
+          <div class="fw-bold text-uppercase mb-1" style="font-size: 10px; letter-spacing: 0.8px; color: #0d6efd !important;">
+            All-Time Check-Ins
+          </div>
+          <h3 id="stat-lifetime-count" class="fw-bold mb-0 text-primary" style="font-size: calc(1.2rem + 0.4vw); letter-spacing: -0.5px;">0</h3>
+        </div>
+      </div>
+    </div>
   </div>
 
     <div class="d-flex gap-2 mb-4 overflow-auto pb-2" style="white-space: nowrap;">
       <select id="filterYear" class="filter-pill" onchange="refreshDashboardData()">
       </select>
       <select id="filterMonth" class="filter-pill" onchange="handleMonthChange()">
-      <option value="All">All Months</option>
+        <option value="All">All Months</option>
       </select>
-
-      <button class="btn btn-light btn-sm rounded-3 d-flex align-items-center justify-content-center p-0  shadow-sm border-0" 
-          id="refresh-dashboard-btn" 
-          onclick="refreshDashboardData()" 
-          data-bs-toggle="tooltip" 
-          data-bs-placement="bottom" 
-          data-bs-title="Refresh Guests" 
-          style="width: 32px; height: 32px; background-color: #ffffff;">
-        <i class="bi bi-arrow-clockwise text-muted fs-6" id="refresh-icon"></i>
-        <span class="spinner-border spinner-border-sm text-muted d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
-      </button>
+      <select id="filterSource" class="filter-pill" onchange="handleFilterChange()">
+        <option value="All">All Sources</option>
+        <option value="Airbnb">Airbnb</option>
+        <option value="Personal">Personal</option>
+      </select>
+      <select id="filterFloor" class="filter-pill" onchange="handleFilterChange()">
+        <option value="All">All Floors</option>
+        <option value="Ground Floor">Ground Floor</option>
+        <option value="Second Floor">Second Floor</option>
+      </select>
+     
     </div>
 
     <div id="guest-feed" class="pb-5">

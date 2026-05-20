@@ -95,6 +95,7 @@ function getDashboardData(filterYear, filterMonth) {
     // PHASE 1: COMPUTE CONSOLIDATED LIFETIME REVENUE ACROSS ALL YEARS
     // -----------------------------------------------------------------
     let lifetimeTotalRevenue = 0;
+    let lifetimeTotalCheckIns = 0;
 
     sheets.forEach(sheet => {
       const sheetName = sheet.getName().trim();
@@ -122,6 +123,7 @@ function getDashboardData(filterYear, filterMonth) {
               let amtStr = (row[amountIdx] || "0").toString().replace(/[₹,]/g, "");
               let amtNum = Number(amtStr) || 0;
               lifetimeTotalRevenue += amtNum;
+              lifetimeTotalCheckIns++; // Increment global record counter
             });
           }
         }
@@ -170,11 +172,15 @@ function getDashboardData(filterYear, filterMonth) {
       headers.forEach((header, i) => {
         let key = header.toString();
 
-        // --- KEY MAPPING LOGIC ---
-        if (key === "AirBnb\\Personal") {
+        // 1. Unify Source Column
+        if (key === "AirBnb\\Personal" || key === "Source") {
           key = "Source";
-        } else {
-          // Converts "Check-in Date" to "Check_in_Date", "Customer Ratings" to "Customer_Ratings"
+        } 
+        // 2. Unify Floor Column Name (Adjust "Floor" to match your exact spreadsheet column header text)
+        else if (key === "Floor") {
+          key = "Floor";
+        } 
+        else {
           key = key.replace(/\\|\s|-/g, "_");
         }
 
@@ -210,8 +216,8 @@ function getDashboardData(filterYear, filterMonth) {
         totalRevenue: totalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 }).replace("INR", "").trim(),
         count: guestCount,
         period: filterMonth ? `${filterMonth} ${targetTab}` : targetTab,
-        // --- ADDED NEW CORE CHARACTERISTICS ---
-        lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+        lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 }),
+        lifetimeCount: lifetimeTotalCheckIns // 
       }
     };
   } catch (err) {
@@ -260,7 +266,7 @@ function syncAirbnbEmails(selectedYear) {
         
         if (subjectMatch) {
           guestName = subjectMatch[1].trim(); 
-          checkInStr = subjectMatch[2].trim() + `, ${currentYear}`; // Outputs: "May 30, 2026"
+          checkInStr = subjectMatch[2].trim() + `, ${targetYear}`; // Outputs: "May 30, 2026"
         } else {
           return; // Skip if subject doesn't match standard confirmation format
         }
@@ -410,6 +416,8 @@ function test_syncAirbnbEmails() {
       console.warn(">>> [TEST] Could not find Sri Harsha's email thread. Ensure the email is in your inbox/trash and hasn't been permanently deleted.");
       return;
     }
+
+    syncAirbnbEmails("2026"); 
     
     const message = threads[0].getMessages()[0];
     const subject = message.getSubject();
