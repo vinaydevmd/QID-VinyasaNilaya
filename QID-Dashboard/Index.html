@@ -19,25 +19,25 @@
         
         <div class="d-flex align-items-center gap-2">
           
-          <button class="btn btn-light btn-sm rounded-3 d-flex align-items-center justify-content-center p-0  shadow-sm border-0" 
-              id="refresh-dashboard-btn" 
-              onclick="refreshDashboardData()" 
-              data-bs-toggle="tooltip" 
-              data-bs-placement="bottom" 
-              data-bs-title="Refresh Guests" 
-              style="width: 32px; height: 32px; background-color: #ffffff;">
-            <i class="bi bi-arrow-clockwise text-muted fs-6" id="refresh-icon"></i>
-            <span class="spinner-border spinner-border-sm text-muted d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
+          <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border-0" 
+                  id="refresh-dashboard-btn" 
+                  onclick="refreshDashboardData()" 
+                  data-bs-toggle="tooltip" 
+                  data-bs-placement="bottom" 
+                  data-bs-title="Refresh Guests" 
+                  style="width: 34px; height: 34px; border: none;">
+            <i class="bi bi-arrow-clockwise text-primary fs-5" id="refresh-icon"></i>
+            <span class="spinner-border spinner-border-sm text-primary d-none" id="refresh-spinner" role="status" style="width: 14px; height: 14px;"></span>
           </button>
 
-          <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm" 
-            id="sync-btn" 
-            onclick="triggerAirbnbSync()" 
-            data-bs-toggle="tooltip" 
-            data-bs-placement="bottom" 
-            data-bs-title="Sync Airbnb Bookings" 
-            style="width: 34px; height: 34px; border: none;">
-              <i class="bi bi-arrow-repeat text-primary fs-5" id="sync-icon"></i>
+          <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border-0" 
+                  id="sync-btn" 
+                  onclick="triggerAirbnbSync()" 
+                  data-bs-toggle="tooltip" 
+                  data-bs-placement="bottom" 
+                  data-bs-title="Sync Airbnb Bookings" 
+                  style="width: 34px; height: 34px; border: none;">
+            <i class="bi bi-arrow-repeat text-primary fs-5" id="sync-icon"></i>
             <span class="spinner-border spinner-border-sm text-primary d-none" id="sync-spinner" role="status"></span>
           </button>
 
