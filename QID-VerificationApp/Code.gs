@@ -272,10 +272,12 @@ function parseAadhaarData(rawText) {
   let capturingAddress = false;
   let addressLines = [];
 
+  // FIX A: Added "AADHAAR", "NUMBER", "NO." to weed out metadata header lines
   const noiseKeywords = [
     "GOVERNMENT", "INDIA", "FATHER", "DOB", "MALE", "FEMALE",
     "ENROLLMENT", "UNIQUE", "HELP", "YEAR", "VID", "INDA",
-    "WWW.", "HELP@", "ELITEBOOK", "LATITUDE", "THINKPAD", "MACBOOK", "HP", "DELL"
+    "WWW.", "HELP@", "ELITEBOOK", "LATITUDE", "THINKPAD", "MACBOOK", "HP", "DELL",
+    "AADHAAR", "NUMBER", "NO."
   ];
   const searchLimit = Math.floor(lines.length * 0.4);
 
@@ -293,21 +295,23 @@ function parseAadhaarData(rawText) {
       const isNoise = noiseKeywords.some(word => upperLine.includes(word));
       const hasNumbers = /\d/.test(englishOnlyLine);
       const hasVowels = /[AEIOUY]/.test(upperLine); // Real names must have vowels
+      
+      // FIX B: Added protection against lines starting with slashes or structural symbols
+      const isStructuralGarbage = /^[\/\s\\|:.\-]+/.test(englishOnlyLine);
 
-      if (englishOnlyLine.length > 3 && !isRelation && !isNoise && !hasNumbers && !isWatermarkGarbage && hasVowels) {
+      if (englishOnlyLine.length > 3 && !isRelation && !isNoise && !hasNumbers && !isWatermarkGarbage && hasVowels && !isStructuralGarbage) {
 
         let potentialName = englishOnlyLine.replace(/^[:\s,-]+/, "").trim();
 
-        // 3. Look-Ahead Logic: Check if the next line is a continuation (like "Ram" or "M D")
         if (i + 1 < searchLimit) {
           let nextLine = lines[i + 1].replace(/[^\x00-\x7F]/g, "").trim();
           const nextUpper = nextLine.toUpperCase();
           const nextIsNoise = noiseKeywords.some(word => nextUpper.includes(word));
+          const nextIsStructural = /^[\/\s\\|:.\-]+/.test(nextLine);
 
-          // Append if next line is short, clean, and not a relation/number
-          if (nextLine.length > 0 && nextLine.length < 15 && !nextIsNoise && !/\d/.test(nextLine) && !/S\/O|D\/O|W\/O/i.test(nextUpper)) {
+          if (nextLine.length > 0 && nextLine.length < 15 && !nextIsNoise && !/\d/.test(nextLine) && !/S\/O|D\/O|W\/O/i.test(nextUpper) && !nextIsStructural) {
             potentialName += " " + nextLine;
-            i++; // Consume the next line
+            i++; 
           }
         }
 

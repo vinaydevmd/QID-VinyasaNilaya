@@ -90,9 +90,10 @@
             </div>
           </div>
 
-          <button type="button" id="scanBtn" class="btn btn-outline-primary w-100 py-3 fw-bold mb-4" onclick="handleIdScan()">
-            <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2"></span>
-            Start AI Identity Scan
+          <button type="button" id="scanBtn" class="btn btn-primary btn-lg w-100 py-3 fw-bold mb-4 shadow-sm" onclick="handleIdScan()" style="background-color: #198754; border-color: #198754;">
+            <span id="scanSpinner" class="spinner-border spinner-border-sm d-none me-2" role="status"></span>
+            <i class="bi bi-cpu-fill me-2" id="scanIcon"></i>
+            <span id="scanBtnText">Verify & Scan Document</span>
           </button>
         </div>
 
