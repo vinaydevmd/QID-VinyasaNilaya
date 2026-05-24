@@ -308,7 +308,8 @@ function rebuildMonthDropdown(guests) {
     }
 }
 
-/*Render dashboard */
+
+// 1st Version for EDIT\ADD Model
 function renderDashboard(data) {
     // 1. Log the entire raw response from the server
     console.log(">>> [DEBUG] Server Data Received:", data);
@@ -388,77 +389,88 @@ function renderDashboard(data) {
     const invertedGuestFeed = normalizedGuests.reverse();
 
     invertedGuestFeed.forEach((guest, index) => {
-    const source = guest.Source || "Personal";
-    const sourceClass = source === 'AirBnb' ? 'tag-airbnb' : 'tag-personal';
-    
-    // Use the verification status from the server
-    const isVerified = guest.isVerified || false; 
+        const source = guest.Source || "Personal";
+        const sourceClass = source === 'AirBnb' || source === 'Airbnb' ? 'tag-airbnb' : 'tag-personal';
+        
+        // Use the verification status from the server
+        const isVerified = guest.isVerified || false; 
 
-    // Define the badge HTML using single quotes to avoid backtick nesting errors
-    const badgeHtml = isVerified ? 
-        '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>Verified ID</span>' : 
-        '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;">Pending ID</span>';
+        // Define the badge HTML using single quotes to avoid backtick nesting errors
+        const badgeHtml = isVerified ? 
+            '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>Verified ID</span>' : 
+            '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;">Pending ID</span>';
 
-    // Check if WhatsApp_Num exists (from Code.gs) and build the button
-    const whatsappBtn = (guest.WhatsApp_Num && guest.WhatsApp_Num.length >= 10) ? 
-    `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" 
-        class="btn btn-success rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm ms-3" 
-        style="width: 24px; height: 24px; background-color: #25D366; border: none; padding: 0; min-width: 24px;">
-        <i class="bi bi-whatsapp text-white" style="font-size: 13px; line-height: 1;"></i>
-    </a>` : '';
+        // Check if WhatsApp_Num exists (from Code.gs) and build the button
+        const whatsappBtn = (guest.WhatsApp_Num && guest.WhatsApp_Num.length >= 10) ? 
+        `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" 
+            class="btn btn-success rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm ms-3" 
+            style="width: 24px; height: 24px; background-color: #25D366; border: none; padding: 0; min-width: 24px;">
+            <i class="bi bi-whatsapp text-white" style="font-size: 13px; line-height: 1;"></i>
+        </a>` : '';
 
-    const card = `
-      <div class="card guest-card shadow-sm p-3 mb-3 border-0">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="source-tag ${sourceClass} fw-bold">${source}</span>
-          ${badgeHtml}
-        </div>
+        // Safe JSON string conversion for inline execution tags, replacing quotes with &quot;
+        const safeGuestJson = JSON.stringify(guest).replace(/"/g, '&quot;');
 
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <div class="d-flex align-items-center" style="max-width: 75%;">
-            <h6 class="fw-bold mb-0 text-truncate" style="line-height: 1.2;">${guest.Name}</h6>
-            ${whatsappBtn}
-          </div>
-          <div class="text-warning small ms-2" style="white-space: nowrap;">${guest.Customer_Ratings || ''}</div>
-        </div>
+        const card = `
+          <div class="card guest-card shadow-sm p-3 mb-3 border-0 position-relative" style="border-radius: 14px;">
+            
+            <button class="btn btn-link p-2 position-absolute" 
+                    style="top: 12px; right: 12px; color: #a0aec0; z-index: 5; text-decoration: none;" 
+                    onclick="openEditModal(${safeGuestJson})"
+                    data-bs-toggle="tooltip"
+                    data-bs-title="Edit Guest Data">
+              <i class="bi bi-pencil-square text-muted fs-5 transition-color"></i>
+            </button>
 
-        <div class="row g-0 py-2 border-top border-bottom my-2">
-          <div class="col-6 small text-muted">
-            <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">CHECK-IN</div>
-            <div class="text-dark fw-medium">${guest.Check_in_Date || 'N/A'}</div>
-          </div>
-          <div class="col-6 small text-muted text-end border-start ps-2">
-            <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">DURATION</div>
-            <div class="text-dark fw-medium">${guest.Days || 1} Night(s)</div>
-          </div>
-        </div>
-
-        <div class="d-flex justify-content-between align-items-center mt-1">
-          <div>
-            <div class="h5 fw-bold text-primary mb-0">₹${Number(guest.Amount).toLocaleString('en-IN')}</div>
-            <div class="small text-muted" style="font-size: 11px;">
-              ${guest.Guests || 0} Guests • Floor: ${guest.Floor || '-'}
+            <div class="d-flex justify-content-between align-items-center mb-2" style="padding-right: 28px;">
+              <span class="source-tag ${sourceClass} fw-bold">${source}</span>
+              ${badgeHtml}
             </div>
-          </div>
-          
-          <div class="text-end small text-muted">
-            <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
-          </div>
-        </div>
-                 
-        ${guest.Comments ? `
-          <div class="mt-2 pt-2 border-top small text-muted">
-             <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
-          </div>
-        ` : ''}
-      </div>
 
-     
-    `;
-    feed.innerHTML += card;
-  });
-   console.log(">>> [DEBUG] Render complete.");
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <div class="d-flex align-items-center" style="max-width: 75%;">
+                <h6 class="fw-bold mb-0 text-truncate" style="line-height: 1.2;">${guest.Name}</h6>
+                ${whatsappBtn}
+              </div>
+              <div class="text-warning small ms-2" style="white-space: nowrap;">${guest.Customer_Ratings || ''}</div>
+            </div>
+
+            <div class="row g-0 py-2 border-top border-bottom my-2">
+              <div class="col-6 small text-muted">
+                <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">CHECK-IN</div>
+                <div class="text-dark fw-medium">${guest.Check_in_Date || 'N/A'}</div>
+              </div>
+              <div class="col-6 small text-muted text-end border-start ps-2">
+                <div class="d-block" style="font-size: 10px; letter-spacing: 0.5px;">DURATION</div>
+                <div class="text-dark fw-medium">${guest.Days || 1} Night(s)</div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-1">
+              <div>
+                <div class="h5 fw-bold text-primary mb-0">₹${Number(guest.Amount).toLocaleString('en-IN')}</div>
+                <div class="small text-muted" style="font-size: 11px;">
+                  ${guest.Guests || 0} Guests • Floor: ${guest.Floor || '-'}
+                </div>
+              </div>
+              
+              <div class="text-end small text-muted">
+                <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
+              </div>
+            </div>
+                         
+            ${guest.Comments ? `
+              <div class="mt-2 pt-2 border-top small text-muted">
+                 <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        feed.innerHTML += card;
+    });
+    console.log(">>> [DEBUG] Render complete.");
 }
+
 
 /*Airbnb Sync through emails*/
 function triggerAirbnbSync() {
@@ -554,5 +566,175 @@ if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initTooltips);
 } else {
     initTooltips(); // Execute immediately if DOM elements are already structurally hot
+}
+
+
+/********** Modal to ADD \ EDIT Guest Details*/
+let bootstrapFormModalInstance = null;
+
+// Initialization routine helper
+function getModalInstance() {
+    if (!bootstrapFormModalInstance) {
+        bootstrapFormModalInstance = new bootstrap.Modal(document.getElementById('guestFormModal'));
+    }
+    return bootstrapFormModalInstance;
+}
+
+/**
+ * Configure UI context for fresh record creation path
+ */
+function openAddModal() {
+    document.getElementById('guestCrudForm').reset();
+    document.getElementById('formMode').value = "ADD";
+    document.getElementById('formRowIndex').value = "";
+    document.getElementById('guestFormModalLabel').innerText = "Add New Guest Record";
+    document.getElementById('formSubmitBtn').innerText = "Insert Record";
+    getModalInstance().show();
+}
+
+/**
+ * Advanced Pre-populating Controller parsing all layout objects into fields
+ */
+function openEditModal(guestObj) {
+    // 1. Initial Entry Diagnostics
+    console.log(">>> 🔓 [MODAL OPEN] Triggered. Raw guest data received from card:", guestObj);
+
+    document.getElementById('guestCrudForm').reset();
+    document.getElementById('formMode').value = "EDIT";
+    
+    // Bind unique structural references
+    const calculatedRowIndex = guestObj.Row_Number || guestObj.rowNum || "";
+    document.getElementById('formRowIndex').value = calculatedRowIndex;
+    console.log(`>>> 📍 [MODAL OPEN] Targeted Spreadsheet Row Index: [${calculatedRowIndex}]`);
+    
+    // Fill Text & Digital Elements
+    document.getElementById('inputName').value = guestObj.Name || "";
+    document.getElementById('inputAmount').value = guestObj.Amount ? String(guestObj.Amount).replace(/[₹,]/g,'') : "";
+    document.getElementById('inputGuestsCount').value = guestObj.Guests || "1";
+    document.getElementById('inputDays').value = guestObj.Days || "1";
+    document.getElementById('inputComments').value = guestObj.Comments || "";
+
+    // Parse Mobile Number (Strip country code to match your data protocols)
+    let rawMobile = guestObj.WhatsApp_Num || guestObj.Mobile || "";
+    let cleanMobile = rawMobile.toString().replace(/^\+91/, '').trim();
+    document.getElementById('inputMobile').value = cleanMobile;
+
+    // --- BUG FIX: SAFE LOCAL ISO EXTRACTION SYSTEM ---
+    if (guestObj.Check_in_Date) {
+        let dateStr = String(guestObj.Check_in_Date).trim();
+        let parsedDate = new Date(dateStr);
+        
+        if (!isNaN(parsedDate.getTime())) {
+            // Extract components using local time vectors to protect against UTC shifting anomalies
+            let yyyy = parsedDate.getFullYear();
+            let mm = String(parsedDate.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
+            let dd = String(parsedDate.getDate()).padStart(2, '0');
+            
+            let formattedIsoDate = `${yyyy}-${mm}-${dd}`; // Perfectly matches YYYY-MM-DD
+            
+            document.getElementById('inputCheckIn').value = formattedIsoDate;
+            console.log(`>>> 📅 [MODAL OPEN] Date parsed cleanly: "${dateStr}" ➔ "${formattedIsoDate}"`);
+        } else {
+            // Secondary Fallback: If it's already an HTML-style YYYY-MM-DD string, handle it cleanly
+            if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                document.getElementById('inputCheckIn').value = dateStr;
+            } else {
+                document.getElementById('inputCheckIn').value = "";
+                console.warn(`>>> ⚠️ [MODAL OPEN] Date fallback could not translate structural data: "${dateStr}"`);
+            }
+        }
+    } else {
+        console.warn(">>> ⚠️ [MODAL OPEN] " + guestObj.Name + "'s profile is missing a Check_in_Date property value.");
+        document.getElementById('inputCheckIn').value = ""; // Enforce safe state initialization
+    }
+
+    // --- BULLETPROOF ROBUST DROPDOWN SELECTORS MATCHING ---
+    const rawSource = guestObj.Source ? guestObj.Source.toString().trim().toLowerCase() : "";
+    const sourceSelectEl = document.getElementById('inputSource');
+    if (rawSource.includes("airbnb")) {
+        sourceSelectEl.value = "Airbnb";
+    } else if (rawSource.includes("personal")) {
+        sourceSelectEl.value = "Personal";
+    } else {
+        sourceSelectEl.value = "Airbnb"; 
+    }
+
+    const rawFloor = guestObj.Floor ? guestObj.Floor.toString().trim().toLowerCase() : "";
+    const floorSelectEl = document.getElementById('inputFloor');
+    if (rawFloor.includes("ground") || rawFloor === "g") {
+        floorSelectEl.value = "Ground Floor";
+    } else if (rawFloor.includes("second") || rawFloor === "s") {
+        floorSelectEl.value = "Second Floor";
+    } else {
+        floorSelectEl.value = "Ground Floor"; 
+    }
+
+    const rawRatings = guestObj.Customer_Ratings || "";
+    document.getElementById('inputRatings').value = rawRatings;
+
+    console.log(`>>> 🎛️ [MODAL OPEN] Dropdowns assigned configurations: Source=[${sourceSelectEl.value}], Floor=[${floorSelectEl.value}], Ratings=[${rawRatings || 'None'}]`);
+
+    // Toggle Modal Interface Title States
+    document.getElementById('guestFormModalLabel').innerText = "Modify Guest Registration";
+    document.getElementById('formSubmitBtn').innerText = "Update Changes";
+    getModalInstance().show();
+}
+
+/**
+ * Update Submit handler to dispatch payload data variables back to server
+ */
+function handleFormSubmit(e) {
+    e.preventDefault();
+    
+    const submitBtn = document.getElementById('formSubmitBtn');
+    
+    // Direct DOM extraction check
+    const checkInInput = document.getElementById('inputCheckIn');
+    if (!checkInInput || !checkInInput.value) {
+        alert("Please select a valid Check-In Date before submitting.");
+        return false;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Processing Transaction...";
+
+    const mode = document.getElementById('formMode').value;
+    const rowIdx = document.getElementById('formRowIndex').value;
+    const activeYear = document.getElementById('filterYear').value || new Date().getFullYear().toString();
+
+    // Read full parameters list array definitions cleanly
+    const payload = {
+        name: document.getElementById('inputName').value.trim(),
+        mobile: document.getElementById('inputMobile').value.replace(/\s+/g, ''), // Strip spaces
+        amount: parseFloat(document.getElementById('inputAmount').value) || 0,
+        guests: parseInt(document.getElementById('inputGuestsCount').value) || 1,
+        checkIn: checkInInput.value, // Confirmed valid YYYY-MM-DD string
+        days: parseInt(document.getElementById('inputDays').value) || 1,
+        source: document.getElementById('inputSource').value,
+        floor: document.getElementById('inputFloor').value,
+        ratings: document.getElementById('inputRatings').value,
+        comments: document.getElementById('inputComments').value.trim(),
+        year: activeYear,
+        rowIndex: rowIdx
+    };
+
+    console.log(`>>> 🚀 [CRUD DISPATCH] Mode: [${mode}] | Year Target Sheet: [${activeYear}] | Row Number Reference: [${rowIdx}]`);
+    console.log(">>> 📦 [CRUD DISPATCH] Outbound Form Payload Object Data:", payload);
+
+    google.script.run
+        .withSuccessHandler(function(response) {
+            console.log(`>>> ✅ [CRUD TRANSACTION SUCCESS] Backend Response: "${response}"`);
+            submitBtn.disabled = false;
+            getModalInstance().hide();
+            
+            console.log(">>> 🔄 Cache evicted. Forcing dashboard content refresh cycle...");
+            loadDashboard(true); 
+        })
+        .withFailureHandler(function(err) {
+            console.error(">>> ❌ [CRUD TRANSACTION FAILURE] API connection pipeline aborted with error:", err);
+            submitBtn.disabled = false;
+            alert("Database Error: " + err.message);
+        })
+        .writeGuestDataRow(mode, payload);
 }
 </script>
