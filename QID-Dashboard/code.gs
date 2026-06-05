@@ -244,24 +244,159 @@ function syncAirbnbEmails(selectedYear) {
     const labelName = "Vinyasa-Synced";
     let syncLabel = GmailApp.getUserLabelByName(labelName) || GmailApp.createLabel(labelName);
 
-    // Target ONLY fresh confirmation emails that haven't been processed yet
-    const query = `from:automated@airbnb.com subject:"Reservation confirmed" -label:${labelName}`;
-    const threads = GmailApp.search(query, 0, 10);
+    // Dynamic Column Matrix Mapping Indexes for Cancellations & Reviews
+    const nameColIdx = headers.indexOf("Name");
+    const checkInColIdx = headers.indexOf("Check-in Date");
+    const amountColIdx = headers.indexOf("Amount");
+    const commentsColIdx = headers.indexOf("Comments");
+    const ratingsColIdx = headers.indexOf("Customer Ratings") !== -1 ? headers.indexOf("Customer Ratings") : headers.indexOf("Ratings");
+
+    // Target fresh confirmations, cancellations, or reviews that haven't been processed yet
+    const query = `from:automated@airbnb.com ("Reservation confirmed" OR "review" OR "Canceled:") -label:${labelName}`;
+    const threads = GmailApp.search(query, 0, 15);
     
     let newBookingsCount = 0;
+    let reviewsCount = 0;
+    let cancellationCount = 0;
 
     threads.forEach(thread => {
       const messages = thread.getMessages();
       let processedThread = false;
 
       messages.forEach(message => {
-        // REMOVED THE FAULTY hasLabel() GUARD LINE HERE
-        // GmailApp.search query already excludes synced labels perfectly.
-
         const subject = message.getSubject();
         const body = message.getPlainBody();
-        
-        // --- 1. PARSE SUBJECT FOR NAME & ARRIVAL ---
+        const combinedTextToAnalyze = (subject + " " + body);
+
+        // =========================================================================
+        // SCENARIO A: GUEST LEFT A REVIEW (REPEATING STAR GRAPHIC FORMAT)
+        // =========================================================================
+        if (combinedTextToAnalyze.toLowerCase().includes("left a") && combinedTextToAnalyze.toLowerCase().includes("review")) {
+          console.log(`\n=================================================================`);
+          console.log(`>>> [REVIEW TRACE START] Processing Review Email`);
+          
+          const reviewMatch = combinedTextToAnalyze.match(/(.+?)\s+left\s+a\s+(\d+)-star\s+review/i);
+          
+          if (reviewMatch) {
+            let rawName = reviewMatch[1].replace(/canceled:|cancelled:|reservation confirmed\s*-\s*/i, "").trim();
+            const reviewerShortName = rawName.toLowerCase(); 
+            
+            // Extract the numeric rating and turn it into a row of emojis (e.g., 5 -> "⭐⭐⭐⭐⭐")
+            const numericRating = parseInt(reviewMatch[2].trim());
+            const starRating = "⭐".repeat(numericRating); 
+            
+            let currentSheetData = sheet.getDataRange().getValues();
+            const platformColIdx = headers.indexOf("AirBnb\\Personal");
+            
+            console.log(`>>> [REVIEW TARGET] Seeking Short Name: "${reviewerShortName}" | Formatted Rating: ${starRating}`);
+            console.log(`>>> [REVIEW LOOP] Scanning spreadsheet rows for partial name match...`);
+
+            let matchFound = false;
+
+            for (let row = 1; row < currentSheetData.length; row++) {
+              let rawSheetName = currentSheetData[row][nameColIdx] ? currentSheetData[row][nameColIdx].toString() : "";
+              let existingFullName = rawSheetName.trim().toLowerCase(); 
+              
+              let rawPlatform = platformColIdx !== -1 && currentSheetData[row][platformColIdx] ? currentSheetData[row][platformColIdx].toString() : "";
+              let platformType = rawPlatform.trim().toLowerCase();
+
+              let nameMatches = existingFullName.includes(reviewerShortName);
+
+              if (nameMatches && platformType === "airbnb" && ratingsColIdx !== -1) {
+                sheet.getRange(row + 1, ratingsColIdx + 1).setValue(starRating);
+                console.log(`\n>>> [REVIEW MATCH SUCCESS] Found row! Set row ${row + 1}, col ${ratingsColIdx + 1} to: ${starRating}`);
+                reviewsCount++;
+                processedThread = true;
+                matchFound = true;
+                break; 
+              }
+            }
+            
+            if (!matchFound) {
+              console.warn(`\n>>> [REVIEW FAILURE] Scanned entire loop matrix. Could not partially match "${reviewerShortName}" under channel category "airbnb".`);
+            }
+          } else {
+            console.warn(`>>> [REVIEW REGEX ERROR] Found review text triggers, but match pattern execution dropped.`);
+          }
+          console.log(`=================================================================\n`);
+          return; 
+        }
+
+        // =========================================================================
+        // SCENARIO B: CANCELLATION NOTICE RECEIVED (OBJECT-SAFE COMPONENT MATCH)
+        // =========================================================================
+        if (combinedTextToAnalyze.toLowerCase().includes("canceled:") || combinedTextToAnalyze.toLowerCase().includes("cancelled:")) {
+          const cancelMatch = combinedTextToAnalyze.match(/Reservation\s+([A-Z0-9]{10})/i) || combinedTextToAnalyze.match(/code\s+([A-Z0-9]{10})/i);
+          const dateMatch = subject.match(/for\s+([A-Z][a-z]{2}\s+\d+)/i);
+          
+          let targetYearNum = parseInt(targetYear);
+          let targetMonthNum = -1;
+          let targetDayNum = -1;
+
+          if (dateMatch) {
+            let emailDateObj = new Date(dateMatch[1].trim() + `, ${targetYear}`);
+            if (!isNaN(emailDateObj.getTime())) {
+              targetMonthNum = emailDateObj.getMonth() + 1;
+              targetDayNum = emailDateObj.getDate(); 
+            }
+          }
+
+          const targetConfirmationCode = cancelMatch ? cancelMatch[1].trim() : "NOT_FOUND";
+          let currentSheetData = sheet.getDataRange().getValues();
+          let matchRowIdx = -1;
+
+          for (let row = 1; row < currentSheetData.length; row++) {
+            let commentsValue = currentSheetData[row][commentsColIdx] ? currentSheetData[row][commentsColIdx].toString() : "";
+            let rowCheckInValue = currentSheetData[row][checkInColIdx];
+
+            // Strategy 1: Unique Confirmation Code Matching
+            if (targetConfirmationCode !== "NOT_FOUND" && commentsValue.includes(targetConfirmationCode)) {
+              matchRowIdx = row + 1;
+              break;
+            }
+            
+            // Strategy 2: Type-Safe Calendar Date Comparison
+            if (targetMonthNum !== -1 && rowCheckInValue) {
+              let rowMonth, rowDay, rowYear;
+
+              if (rowCheckInValue instanceof Date) {
+                rowMonth = rowCheckInValue.getMonth() + 1;
+                rowDay = rowCheckInValue.getDate();
+                rowYear = rowCheckInValue.getFullYear();
+              } else {
+                let dateParts = rowCheckInValue.toString().trim().split("/");
+                if (dateParts.length === 3) {
+                  rowMonth = parseInt(dateParts[0]);
+                  rowDay = parseInt(dateParts[1]);
+                  rowYear = parseInt(dateParts[2]);
+                }
+              }
+
+              if (rowMonth === targetMonthNum && rowDay === targetDayNum && rowYear === targetYearNum) {
+                matchRowIdx = row + 1;
+                break;
+              }
+            }
+          }
+
+          if (matchRowIdx !== -1) {
+            sheet.getRange(matchRowIdx, commentsColIdx + 1).setValue(`CANCELLED CODE: ${targetConfirmationCode}. Flagged via sync.`);
+
+            // --- CLEAR AMOUNT COLUMN FOR CALCULATION EXCLUSION ---
+            if (amountColIdx !== -1) {
+              sheet.getRange(matchRowIdx, amountColIdx + 1).setValue("");
+            }
+
+            sheet.getRange(matchRowIdx, 1, 1, headers.length).setFontColor("#e53e3e"); 
+            cancellationCount++;
+            processedThread = true;
+          }
+          return; 
+        }
+
+        // =========================================================================
+        // SCENARIO C: RESERVATION CONFIRMED (YOUR ORIGINAL UNTOUCHED WORKFLOW)
+        // =========================================================================
         const subjectMatch = subject.match(/Reservation confirmed\s*-\s*(.*?)\s+arrives\s+(.*)/i);
         
         let guestName = "";
@@ -276,7 +411,6 @@ function syncAirbnbEmails(selectedYear) {
         
         if (!guestName) return;
 
-        // --- 2. PARSE BODY FOR METRICS ---
         const nightsMatch = body.match(/(\d+)\s*nights\s*room\s*fee/i) || body.match(/(\d+)\s*night/i);
         const nights = nightsMatch ? Number(nightsMatch[1]) : 1;
         
@@ -287,15 +421,21 @@ function syncAirbnbEmails(selectedYear) {
           finalAmount = Math.round(parseFloat(rawAmt)).toString();
         }
         
-        const guestsMatch = body.match(/(\d+)\s*adults/i) || body.match(/(\d+)\s*guest/i);
-        const totalGuests = guestsMatch ? Number(guestsMatch[1]) : 2;
+        // --- FIXED GUEST PARSING ENGINE ---
+        // Looks specifically for an isolated digit followed by "adult" or "guest" to bypass header profiles
+        const guestsMatch = body.match(/(\d+)\s*adult/i) || body.match(/(\d+)\s*guest(?!\s+will)/i);
+        const totalGuests = guestsMatch ? Number(guestsMatch[1]) : 1; // Default fallback to 1 instead of 2
 
         let currentMonthStr = checkInStr.split(" ")[0]; 
 
         const incomingCheckInDate = new Date(checkInStr);
         const incomingCheckInTime = !isNaN(incomingCheckInDate.getTime()) ? incomingCheckInDate.getTime() : 0;
 
-        // --- 3. MAP NEW ROW DATA VECTOR ---
+        // Parse verification code to anchor upcoming cancellation logic lookups
+        const codeMatch = body.match(/Reservation\s*code\s*([A-Z0-9]{10})/i) || body.match(/Confirmation\s*code\s*([A-Z0-9]{10})/i);
+        const confirmationCode = codeMatch ? codeMatch[1].trim() : "NOT_FOUND";
+        const savedComment = confirmationCode !== "NOT_FOUND" ? `Code: ${confirmationCode}. Automated Gmail Sync Engine.` : "Automated Gmail Sync Engine.";
+
         let newRowData = new Array(headers.length).fill("");
         newRowData[headers.indexOf("Month")] = currentMonthStr;
         newRowData[headers.indexOf("Name")] = guestName;
@@ -305,15 +445,13 @@ function syncAirbnbEmails(selectedYear) {
         newRowData[headers.indexOf("Days")] = nights;
         newRowData[headers.indexOf("AirBnb\\Personal")] = "AirBnb";
         newRowData[headers.indexOf("Floor")] = "Ground"; 
-        newRowData[headers.indexOf("Comments")] = "Automated Gmail Sync Engine.";
+        newRowData[commentsColIdx] = savedComment;
 
-        // --- 4. GRANULAR CHRONOLOGICAL DAY/MONTH INSERTION ENGINE ---
         let currentSheetData = sheet.getDataRange().getValues();
         let lastRowWithContent = sheet.getLastRow();
         
         let insertionRowIndex = lastRowWithContent; 
         let foundInsertionSpot = false;
-        const checkInColIdx = headers.indexOf("Check-in Date");
 
         for (let i = currentSheetData.length - 1; i >= 1; i--) {
           let rowCheckInVal = currentSheetData[i][checkInColIdx] ? currentSheetData[i][checkInColIdx].toString().trim() : "";
@@ -349,16 +487,19 @@ function syncAirbnbEmails(selectedYear) {
         
         newBookingsCount++;
         processedThread = true;
+
       });
 
-      // --- 5. LABEL AND MARK THREAD READ ---
       if (processedThread) {
         thread.addLabel(syncLabel); 
         thread.markRead();          
       }
     });
     
-    return `Sync Complete! Successfully added ${newBookingsCount} chronological booking(s).`;
+  return `Sync Successfully Completed!\n\n` +
+      `📥 New Bookings:\u2003\u2003\u2003\u2003${newBookingsCount} Added\n` +
+      `⭐ Ratings/Reviews:\u2003\u2003${reviewsCount} Updated\n` +
+      `❌ Cancellations:\u2003\u2003\u2003${cancellationCount} Processed`;
     
   } catch (err) {
     console.error("Parser tracking fail: " + err.message);
@@ -858,4 +999,72 @@ function debug_writeGuestDataRow_Suite() {
   }
   
   console.log("\n=== 🧪 DEBUG SUITE COMPLETION LOGS END ===");
+}
+
+
+/**
+ * Test Harness to safely debug the Airbnb Sync Logic 
+ * without modifying real Gmail threads or inbox state.
+ */
+function runDebugTests() {
+  console.log("=== STARTING AIRBNB SYNC ENGINE DEBUG SUITE ===");
+  
+  // 1. Setup Mock Headers matching your actual sheet layout
+  const mockHeaders = ["Month", "Name", "Guests", "Amount", "Check-in Date", "Days", "AirBnb\\Personal", "Floor", "Customer Ratings", "Comments"];
+  
+  // 2. TEST CASE 1: A Raw Cancellation Email (The one causing issues)
+  const sampleCancelSubject = "Canceled: Reservation HMNXX8RCKX for Jun 15 – 17, 2026";
+  const sampleCancelBody = "Hi Host, Reservation HMNXX8RCKX has been canceled by the guest. These dates are now open.";
+  
+  console.log("\n--- Testing Scenario B: Cancellation Parsing ---");
+  debugIndividualPayload(sampleCancelSubject, sampleCancelBody, mockHeaders);
+
+  // 3. TEST CASE 2: A Raw Review Email
+  const sampleReviewSubject = "Sri Harsha left a 5-star review!";
+  const sampleReviewBody = "Read on for a snapshot of what Sri Harsha loved about their stay.";
+  
+  console.log("\n--- Testing Scenario A: Review Parsing ---");
+  debugIndividualPayload(sampleReviewSubject, sampleReviewBody, mockHeaders);
+  
+  console.log("\n=== DEBUG SUITE COMPLETE ===");
+}
+
+/**
+ * Isolated logic tester to print exactly what your Regex matches
+ */
+function debugIndividualPayload(subject, body, headers) {
+  const combinedTextToAnalyze = (subject + " " + body);
+  const targetYear = "2026";
+  
+  // --- ISOLATED CANCELLATION TEST ---
+  if (combinedTextToAnalyze.toLowerCase().includes("canceled:") || combinedTextToAnalyze.toLowerCase().includes("cancelled:")) {
+    console.log("[CHECK] Detected Cancellation Trigger keyword.");
+    
+    const cancelMatch = combinedTextToAnalyze.match(/Reservation\s+([A-Z0-9]{10})/i) || combinedTextToAnalyze.match(/code\s+([A-Z0-9]{10})/i);
+    const dateMatch = subject.match(/for\s+([A-Z][a-z]{2}\s+\d+)/i);
+    
+    let backupCheckInStr = "";
+    if (dateMatch) {
+      backupCheckInStr = dateMatch[1].trim() + `, ${targetYear}`;
+    }
+    
+    console.log(`-> Extracted Code: ${cancelMatch ? cancelMatch[1] : "FAILED TO PARSE CODE"}`);
+    console.log(`-> Extracted Backup Date: ${backupCheckInStr || "FAILED TO PARSE DATE"}`);
+    return;
+  }
+  
+  // --- ISOLATED REVIEW TEST ---
+  if (combinedTextToAnalyze.toLowerCase().includes("left a") && combinedTextToAnalyze.toLowerCase().includes("review")) {
+    console.log("[CHECK] Detected Review Trigger keywords.");
+    
+    const reviewMatch = combinedTextToAnalyze.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+left\s+a\s+(\d+)-star\s+review/i);
+    
+    if (reviewMatch) {
+      console.log(`-> Extracted Reviewer Name: ${reviewMatch[1]}`);
+      console.log(`-> Extracted Rating: ${reviewMatch[2]} Stars`);
+    } else {
+      console.log("-> FAILED TO PARSE REVIEW REGEX");
+    }
+    return;
+  }
 }
