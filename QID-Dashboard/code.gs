@@ -21,16 +21,16 @@ function getAvailableYearsAndInitialize() {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
     const currentYear = new Date().getFullYear().toString(); // e.g., "2026"
-    
+
     // 1. DYNAMIC SYSTEM INITIALIZATION: Check/Create New Year Sheet on Jan 1st
     let targetSheet = ss.getSheetByName(currentYear);
     if (!targetSheet) {
       console.log(`>>> [SYSTEM] Jan 1st Lifecyle Trigger: Creating new tracking tab for [${currentYear}]`);
-      
+
       // Attempt to find your most recent historical sheet to use as a structural template
       const allSheets = ss.getSheets();
       let templateSheet = allSheets[0]; // Fallback to first sheet
-      
+
       // Try to find a sheet name that looks like a 4-digit number to copy layout from
       for (let s of allSheets) {
         if (/^\d{4}$/.test(s.getName())) {
@@ -38,12 +38,12 @@ function getAvailableYearsAndInitialize() {
           break;
         }
       }
-      
+
       // Duplicate the template sheet structure to preserve column names, widths, and formatting models
       if (templateSheet) {
         let newSheet = templateSheet.copyTo(ss);
         newSheet.setName(currentYear);
-        
+
         // Clean out old historical row cell values while maintaining structural formatting headers
         const lastRow = newSheet.getLastRow();
         if (lastRow > 1) {
@@ -55,26 +55,26 @@ function getAvailableYearsAndInitialize() {
         ss.moveActiveSheet(1);
       }
     }
-    
+
     // 2. RETRIEVAL SYSTEM: Gather all 4-digit numeric sheet names for the UI dropdown
     const sheets = ss.getSheets();
     let availableYears = [];
-    
+
     sheets.forEach(sheet => {
       const name = sheet.getName().trim();
       if (/^\d{4}$/.test(name)) { // Matches exact 4-digit years like "2025", "2026"
         availableYears.push(name);
       }
     });
-    
+
     // Sort years in descending order so the newest year is listed first (e.g., 2026, 2025)
     availableYears.sort((a, b) => Number(b) - Number(a));
-    
+
     return {
       years: availableYears,
       activeYear: currentYear
     };
-    
+
   } catch (err) {
     console.error("Initialization / Year discovery failure: " + err.message);
     return { years: [new Date().getFullYear().toString()], activeYear: new Date().getFullYear().toString() };
@@ -90,7 +90,7 @@ function getDashboardData(filterYear, filterMonth) {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
     const sheets = ss.getSheets();
-    
+
     // -----------------------------------------------------------------
     // PHASE 1: COMPUTE CONSOLIDATED LIFETIME REVENUE ACROSS ALL YEARS
     // -----------------------------------------------------------------
@@ -99,27 +99,27 @@ function getDashboardData(filterYear, filterMonth) {
 
     sheets.forEach(sheet => {
       const sheetName = sheet.getName().trim();
-      
+
       // Isolate sheets that match a 4-digit year pattern (e.g., "2024", "2026")
       if (/^\d{4}$/.test(sheetName)) {
         const sheetData = sheet.getDataRange().getValues();
         const headerRowIdx = sheetData.findIndex(row => row.includes("Name") || row.includes("Amount"));
-        
+
         if (headerRowIdx !== -1) {
           const sheetHeaders = sheetData[headerRowIdx];
           const amountIdx = sheetHeaders.indexOf("Amount");
           const nameIdx = sheetHeaders.indexOf("Name");
-          
+
           if (amountIdx !== -1) {
             // Unpack rows beneath the header row
             const sheetRows = sheetData.slice(headerRowIdx + 1);
-            
+
             sheetRows.forEach(row => {
               const nameVal = row[nameIdx] ? row[nameIdx].toString().trim() : "";
-              
+
               // Standard safety exclusions to match your row filter baseline
               if (!nameVal || nameVal === "Total" || nameVal === "No Guests" || nameVal === "") return;
-              
+
               let amtStr = (row[amountIdx] || "0").toString().replace(/[₹,]/g, "");
               let amtNum = Number(amtStr) || 0;
               lifetimeTotalRevenue += amtNum;
@@ -141,14 +141,14 @@ function getDashboardData(filterYear, filterMonth) {
     const headerRowIndex = data.findIndex(row => row.includes("Name") || row.includes("Month"));
 
     if (headerRowIndex === -1) {
-      return { 
-        guests: [], 
-        summary: { 
-          totalRevenue: "₹0", 
-          count: 0, 
+      return {
+        guests: [],
+        summary: {
+          totalRevenue: "₹0",
+          count: 0,
           period: "No Headers Found",
-          lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN') 
-        } 
+          lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN')
+        }
       };
     }
 
@@ -175,11 +175,11 @@ function getDashboardData(filterYear, filterMonth) {
         // 1. Unify Source Column
         if (key === "AirBnb\\Personal" || key === "Source") {
           key = "Source";
-        } 
+        }
         // 2. Unify Floor Column Name (Adjust "Floor" to match your exact spreadsheet column header text)
         else if (key === "Floor") {
           key = "Floor";
-        } 
+        }
         else {
           key = key.replace(/\\|\s|-/g, "_");
         }
@@ -227,6 +227,9 @@ function getDashboardData(filterYear, filterMonth) {
 }
 
 /**** Sync with Airbnb bookings feature - Fresh Confirmations with Daily Timeline Sorting *****/
+/**** Sync with Airbnb bookings feature - Enhanced with De-duplication, Floor Parsing, Live Reviews, & Cancelled Safeguards *****/
+/**** Sync with Airbnb bookings feature - Upgraded to handle Grouped Threads, Reviews, & Cancellations *****/
+/**** Sync with Airbnb bookings feature - Bulletproof Regex & Thread Parsing *****/
 function syncAirbnbEmails(selectedYear) {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
@@ -235,11 +238,11 @@ function syncAirbnbEmails(selectedYear) {
     const targetYear = selectedYear || new Date().getFullYear().toString();
 
     let sheet = ss.getSheetByName(targetYear) || ss.getSheets()[0];
-    
+
     const data = sheet.getDataRange().getValues();
     const headers = data.find(row => row.includes("Name"));
     if (!headers) return "Error: Could not find header row in sheet.";
-    
+
     // Setup the Gmail Sync tracking label
     const labelName = "Vinyasa-Synced";
     let syncLabel = GmailApp.getUserLabelByName(labelName) || GmailApp.createLabel(labelName);
@@ -251,10 +254,17 @@ function syncAirbnbEmails(selectedYear) {
     const commentsColIdx = headers.indexOf("Comments");
     const ratingsColIdx = headers.indexOf("Customer Ratings") !== -1 ? headers.indexOf("Customer Ratings") : headers.indexOf("Ratings");
 
+    // --- FULL MONTH NAME DICTIONARY ---
+    const monthMap = {
+      "jan": "January", "feb": "February", "mar": "March", "apr": "April",
+      "may": "May", "jun": "June", "jul": "July", "aug": "August",
+      "sep": "September", "oct": "October", "nov": "November", "dec": "December"
+    };
+
     // Target fresh confirmations, cancellations, or reviews that haven't been processed yet
     const query = `from:automated@airbnb.com ("Reservation confirmed" OR "review" OR "Canceled:") -label:${labelName}`;
     const threads = GmailApp.search(query, 0, 15);
-    
+
     let newBookingsCount = 0;
     let reviewsCount = 0;
     let cancellationCount = 0;
@@ -274,20 +284,20 @@ function syncAirbnbEmails(selectedYear) {
         if (combinedTextToAnalyze.toLowerCase().includes("left a") && combinedTextToAnalyze.toLowerCase().includes("review")) {
           console.log(`\n=================================================================`);
           console.log(`>>> [REVIEW TRACE START] Processing Review Email`);
-          
+
           const reviewMatch = combinedTextToAnalyze.match(/(.+?)\s+left\s+a\s+(\d+)-star\s+review/i);
-          
+
           if (reviewMatch) {
             let rawName = reviewMatch[1].replace(/canceled:|cancelled:|reservation confirmed\s*-\s*/i, "").trim();
-            const reviewerShortName = rawName.toLowerCase(); 
-            
+            const reviewerShortName = rawName.toLowerCase();
+
             // Extract the numeric rating and turn it into a row of emojis (e.g., 5 -> "⭐⭐⭐⭐⭐")
             const numericRating = parseInt(reviewMatch[2].trim());
-            const starRating = "⭐".repeat(numericRating); 
-            
+            const starRating = "⭐".repeat(numericRating);
+
             let currentSheetData = sheet.getDataRange().getValues();
             const platformColIdx = headers.indexOf("AirBnb\\Personal");
-            
+
             console.log(`>>> [REVIEW TARGET] Seeking Short Name: "${reviewerShortName}" | Formatted Rating: ${starRating}`);
             console.log(`>>> [REVIEW LOOP] Scanning spreadsheet rows for partial name match...`);
 
@@ -295,8 +305,8 @@ function syncAirbnbEmails(selectedYear) {
 
             for (let row = 1; row < currentSheetData.length; row++) {
               let rawSheetName = currentSheetData[row][nameColIdx] ? currentSheetData[row][nameColIdx].toString() : "";
-              let existingFullName = rawSheetName.trim().toLowerCase(); 
-              
+              let existingFullName = rawSheetName.trim().toLowerCase();
+
               let rawPlatform = platformColIdx !== -1 && currentSheetData[row][platformColIdx] ? currentSheetData[row][platformColIdx].toString() : "";
               let platformType = rawPlatform.trim().toLowerCase();
 
@@ -308,10 +318,10 @@ function syncAirbnbEmails(selectedYear) {
                 reviewsCount++;
                 processedThread = true;
                 matchFound = true;
-                break; 
+                break;
               }
             }
-            
+
             if (!matchFound) {
               console.warn(`\n>>> [REVIEW FAILURE] Scanned entire loop matrix. Could not partially match "${reviewerShortName}" under channel category "airbnb".`);
             }
@@ -319,7 +329,7 @@ function syncAirbnbEmails(selectedYear) {
             console.warn(`>>> [REVIEW REGEX ERROR] Found review text triggers, but match pattern execution dropped.`);
           }
           console.log(`=================================================================\n`);
-          return; 
+          return;
         }
 
         // =========================================================================
@@ -328,7 +338,7 @@ function syncAirbnbEmails(selectedYear) {
         if (combinedTextToAnalyze.toLowerCase().includes("canceled:") || combinedTextToAnalyze.toLowerCase().includes("cancelled:")) {
           const cancelMatch = combinedTextToAnalyze.match(/Reservation\s+([A-Z0-9]{10})/i) || combinedTextToAnalyze.match(/code\s+([A-Z0-9]{10})/i);
           const dateMatch = subject.match(/for\s+([A-Z][a-z]{2}\s+\d+)/i);
-          
+
           let targetYearNum = parseInt(targetYear);
           let targetMonthNum = -1;
           let targetDayNum = -1;
@@ -337,7 +347,7 @@ function syncAirbnbEmails(selectedYear) {
             let emailDateObj = new Date(dateMatch[1].trim() + `, ${targetYear}`);
             if (!isNaN(emailDateObj.getTime())) {
               targetMonthNum = emailDateObj.getMonth() + 1;
-              targetDayNum = emailDateObj.getDate(); 
+              targetDayNum = emailDateObj.getDate();
             }
           }
 
@@ -354,7 +364,7 @@ function syncAirbnbEmails(selectedYear) {
               matchRowIdx = row + 1;
               break;
             }
-            
+
             // Strategy 2: Type-Safe Calendar Date Comparison
             if (targetMonthNum !== -1 && rowCheckInValue) {
               let rowMonth, rowDay, rowYear;
@@ -387,46 +397,49 @@ function syncAirbnbEmails(selectedYear) {
               sheet.getRange(matchRowIdx, amountColIdx + 1).setValue("");
             }
 
-            sheet.getRange(matchRowIdx, 1, 1, headers.length).setFontColor("#e53e3e"); 
+            sheet.getRange(matchRowIdx, 1, 1, headers.length).setFontColor("#e53e3e");
             cancellationCount++;
             processedThread = true;
           }
-          return; 
+          return;
         }
 
         // =========================================================================
         // SCENARIO C: RESERVATION CONFIRMED (YOUR ORIGINAL UNTOUCHED WORKFLOW)
         // =========================================================================
         const subjectMatch = subject.match(/Reservation confirmed\s*-\s*(.*?)\s+arrives\s+(.*)/i);
-        
+
         let guestName = "";
         let checkInStr = "";
-        
+
         if (subjectMatch) {
-          guestName = subjectMatch[1].trim(); 
-          checkInStr = subjectMatch[2].trim() + `, ${targetYear}`; 
+          guestName = subjectMatch[1].trim();
+          checkInStr = subjectMatch[2].trim() + `, ${targetYear}`;
         } else {
-          return; 
+          return;
         }
-        
+
         if (!guestName) return;
 
         const nightsMatch = body.match(/(\d+)\s*nights\s*room\s*fee/i) || body.match(/(\d+)\s*night/i);
         const nights = nightsMatch ? Number(nightsMatch[1]) : 1;
-        
+
         const amountMatch = body.match(/You earn[\s\S]*?₹?\s*([\d,]+\.?\d*)/i);
         let finalAmount = "0";
         if (amountMatch) {
-          let rawAmt = amountMatch[1].replace(/,/g, ""); 
+          let rawAmt = amountMatch[1].replace(/,/g, "");
           finalAmount = Math.round(parseFloat(rawAmt)).toString();
         }
-        
+
         // --- FIXED GUEST PARSING ENGINE ---
         // Looks specifically for an isolated digit followed by "adult" or "guest" to bypass header profiles
         const guestsMatch = body.match(/(\d+)\s*adult/i) || body.match(/(\d+)\s*guest(?!\s+will)/i);
         const totalGuests = guestsMatch ? Number(guestsMatch[1]) : 1; // Default fallback to 1 instead of 2
 
-        let currentMonthStr = checkInStr.split(" ")[0]; 
+        //let currentMonthStr = checkInStr.split(" ")[0]; 
+        // --- FIXED MONTH STR TRANSFORMATION ---
+        let rawMonthAbbreviation = checkInStr.split(" ")[0].toLowerCase().replace(/[^a-z]/g, "");
+        let fullMonthName = monthMap[rawMonthAbbreviation] || checkInStr.split(" ")[0];
 
         const incomingCheckInDate = new Date(checkInStr);
         const incomingCheckInTime = !isNaN(incomingCheckInDate.getTime()) ? incomingCheckInDate.getTime() : 0;
@@ -437,32 +450,32 @@ function syncAirbnbEmails(selectedYear) {
         const savedComment = confirmationCode !== "NOT_FOUND" ? `Code: ${confirmationCode}. Automated Gmail Sync Engine.` : "Automated Gmail Sync Engine.";
 
         let newRowData = new Array(headers.length).fill("");
-        newRowData[headers.indexOf("Month")] = currentMonthStr;
+        newRowData[headers.indexOf("Month")] = fullMonthName;
         newRowData[headers.indexOf("Name")] = guestName;
         newRowData[headers.indexOf("Guests")] = totalGuests;
         newRowData[headers.indexOf("Amount")] = finalAmount;
         newRowData[headers.indexOf("Check-in Date")] = checkInStr;
         newRowData[headers.indexOf("Days")] = nights;
         newRowData[headers.indexOf("AirBnb\\Personal")] = "AirBnb";
-        newRowData[headers.indexOf("Floor")] = "Ground"; 
+        newRowData[headers.indexOf("Floor")] = "Ground";
         newRowData[commentsColIdx] = savedComment;
 
         let currentSheetData = sheet.getDataRange().getValues();
         let lastRowWithContent = sheet.getLastRow();
-        
-        let insertionRowIndex = lastRowWithContent; 
+
+        let insertionRowIndex = lastRowWithContent;
         let foundInsertionSpot = false;
 
         for (let i = currentSheetData.length - 1; i >= 1; i--) {
           let rowCheckInVal = currentSheetData[i][checkInColIdx] ? currentSheetData[i][checkInColIdx].toString().trim() : "";
-          
+
           if (rowCheckInVal) {
             let rowDate = new Date(rowCheckInVal);
             let rowDateTime = rowDate.getTime();
 
             if (!isNaN(rowDateTime)) {
               if (rowDateTime <= incomingCheckInTime) {
-                insertionRowIndex = i + 1; 
+                insertionRowIndex = i + 1;
                 foundInsertionSpot = true;
                 break;
               }
@@ -477,36 +490,37 @@ function syncAirbnbEmails(selectedYear) {
         console.log(`>>> [TIMELINE INSERT] Placing ${guestName} (${checkInStr}) directly after row: [${insertionRowIndex}]`);
 
         sheet.insertRowsAfter(insertionRowIndex, 1);
-        
-        let templateRow = (insertionRowIndex === 1) ? 2 : insertionRowIndex; 
+
+        let templateRow = (insertionRowIndex === 1) ? 2 : insertionRowIndex;
         let templateRange = sheet.getRange(templateRow, 1, 1, headers.length);
         let targetRange = sheet.getRange(insertionRowIndex + 1, 1, 1, headers.length);
-        
+
         templateRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
         targetRange.setValues([newRowData]);
-        
+
         newBookingsCount++;
         processedThread = true;
 
       });
 
       if (processedThread) {
-        thread.addLabel(syncLabel); 
-        thread.markRead();          
+        thread.addLabel(syncLabel);
+        thread.markRead();
       }
     });
-    
-  return `Sync Successfully Completed!\n\n` +
+
+    return `Sync Successfully Completed!\n\n` +
       `📥 New Bookings:\u2003\u2003\u2003\u2003${newBookingsCount} Added\n` +
       `⭐ Ratings/Reviews:\u2003\u2003${reviewsCount} Updated\n` +
       `❌ Cancellations:\u2003\u2003\u2003${cancellationCount} Processed`;
-    
+
   } catch (err) {
     console.error("Parser tracking fail: " + err.message);
     throw new Error("Sync processing aborted: " + err.message);
   }
 }
 
+/*****************************Modal to ADD\EDIT Guest Details ***********************************/
 /*****************************Modal to ADD\EDIT Guest Details ***********************************/
 function writeGuestDataRow(mode, payload) {
   // --- FIRST-LINE GATEKEEPER VALIDATION ---
@@ -515,17 +529,17 @@ function writeGuestDataRow(mode, payload) {
   }
 
   const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
-  let sheet = ss.getSheetByName(payload.year.trim());
-  
+  let sheet = ss.getSheetByName(payload.year.toString().trim());
+
   if (!sheet) {
-    sheet = ss.insertSheet(payload.year.trim());
-    sheet.appendRow(["Month","Name","Guests", "Amount","Check-in Date","Days", "Source","AirBnb\Personal","Floor", "Mobile",    "Customer Ratings", "Comments"]);
+    sheet = ss.insertSheet(payload.year.toString().trim());
+    sheet.appendRow(["Month", "Name", "Guests", "Amount", "Check-in Date", "Days", "Source", "AirBnb\\Personal", "Floor", "Mobile", "Customer Ratings", "Comments"]);
     SpreadsheetApp.flush();
   }
 
   let dataRange = sheet.getDataRange().getValues();
   const headers = dataRange[0].map(h => h.toString().trim());
-  
+
   const mapping = {
     Name: headers.indexOf("Name"),
     Amount: headers.indexOf("Amount"),
@@ -551,32 +565,55 @@ function writeGuestDataRow(mode, payload) {
 
   // --- 2. SECURE TIMESTAMP PARSING & UNIFIED STRINGS FORMATION ---
   let generatedMonthLabel = "January";
-  let incomingCheckInTime = 0;
-  let standardizedCheckInString = payload.checkIn; // Default fallback
-  
+  let standardizedCheckInString = payload.checkIn;
+
   const monthsArray = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const shortMonthsArray = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  
+
   const dParsed = parseDateSecurely(payload.checkIn);
-  
+
   if (!dParsed) {
     throw new Error("Transaction Denied: Invalid Date format provided for Check-in Date.");
   }
-  
+
   generatedMonthLabel = monthsArray[dParsed.getMonth()];
-  incomingCheckInTime = dParsed.getTime();
-  
-  // Format the raw UI value (YYYY-MM-DD) into the Airbnb string format: "May 23, 2026"
+
+  // Format the raw UI value (YYYY-MM-DD) into the standard string format: "May 23, 2026"
   standardizedCheckInString = `${shortMonthsArray[dParsed.getMonth()]} ${dParsed.getDate()}, ${dParsed.getFullYear()}`;
 
-  // --- 3. EXECUTE EDIT CLEANUP (Remove row to allow re-sorting) ---
+  // --- 3. BUILD DATA VECTOR ARRAY ---
+  let newRow = new Array(headers.length).fill("");
+  if (mapping.Name !== -1) newRow[mapping.Name] = payload.name;
+  if (mapping.Amount !== -1) newRow[mapping.Amount] = payload.amount;
+  if (monthColIdx !== -1) newRow[monthColIdx] = generatedMonthLabel;
+
+  if (mapping.Source !== -1) {
+    let cleanSource = payload.source.toString().trim().toLowerCase();
+    newRow[mapping.Source] = cleanSource.includes("airbnb") ? "AirBnb" : "Personal";
+  }
+
+  if (mapping.Floor !== -1) {
+    let cleanFloor = payload.floor.toString().trim().toLowerCase();
+    newRow[mapping.Floor] = cleanFloor.includes("second") ? "Second" : "Ground";
+  }
+
+  if (mapping.Mobile !== -1) newRow[mapping.Mobile] = cleanMobile;
+  if (mapping.CheckIn !== -1) newRow[mapping.CheckIn] = standardizedCheckInString;
+  if (mapping.Days !== -1) newRow[mapping.Days] = payload.days;
+  if (mapping.Guests !== -1) newRow[mapping.Guests] = payload.guests;
+  if (mapping.Ratings !== -1) newRow[mapping.Ratings] = payload.ratings;
+  if (mapping.Comments !== -1) newRow[mapping.Comments] = payload.comments;
+
+  // =========================================================================
+  // --- 4. EXECUTE ROUTING (IN-PLACE EDIT VS CHRONOLOGICAL APPEND) ---
+  // =========================================================================
   if (mode === "EDIT") {
     let targetRowNumber = parseInt(payload.rowIndex);
-    
+
+    // Fallback: If row index is lost, search the values matrix for a name match
     if (isNaN(targetRowNumber) || targetRowNumber < 2) {
       console.log(">>> [EDIT] RowIndex missing. Running fallback search by Name...");
       const cleanTargetName = payload.name.toString().trim().toLowerCase();
-      
       for (let i = 1; i < dataRange.length; i++) {
         const currentSheetName = dataRange[i][mapping.Name] ? dataRange[i][mapping.Name].toString().trim().toLowerCase() : "";
         if (currentSheetName === cleanTargetName) {
@@ -585,98 +622,67 @@ function writeGuestDataRow(mode, payload) {
         }
       }
     }
-    
+
     if (targetRowNumber > 1 && targetRowNumber <= sheet.getLastRow()) {
-      console.log(`>>> [EDIT RELOCATION] Dropping Row [${targetRowNumber}] to calculate its new sorted position.`);
-      sheet.deleteRow(targetRowNumber);
-      SpreadsheetApp.flush(); 
+      console.log(`>>> [EDIT SUCCESS] Modifying row [${targetRowNumber}] in-place.`);
+      // Update row fields dynamically without breaking structural row boundaries
+      sheet.getRange(targetRowNumber, 1, 1, headers.length).setValues([newRow]);
     } else {
-      throw new Error("Could not find the target row to edit.");
+      throw new Error("Transaction Aborted: Target spreadsheet row link data could not be verified.");
     }
-  }
 
-  // --- 4. MAP DATA VECTOR ARRAY ---
- /* let newRow = new Array(headers.length).fill("");
-  if (mapping.Name !== -1) newRow[mapping.Name] = payload.name;
-  if (mapping.Amount !== -1) newRow[mapping.Amount] = payload.amount;
-  if (monthColIdx !== -1) newRow[monthColIdx] = generatedMonthLabel;
-  if (mapping.Source !== -1) newRow[mapping.Source] = payload.source;
-  if (mapping.Floor !== -1) newRow[mapping.Floor] = payload.floor;
-  if (mapping.Mobile !== -1) newRow[mapping.Mobile] = cleanMobile;
-  
-  // CRITICAL FIX: Save the standardized string layout "May 23, 2026" instead of "2026-05-23"
-  if (mapping.CheckIn !== -1) newRow[mapping.CheckIn] = standardizedCheckInString;
-  
-  if (mapping.Days !== -1) newRow[mapping.Days] = payload.days;
-  if (mapping.Guests !== -1) newRow[mapping.Guests] = payload.guests;
-  if (mapping.Ratings !== -1) newRow[mapping.Ratings] = payload.ratings;
-  if (mapping.Comments !== -1) newRow[mapping.Comments] = payload.comments;*/
+  } else {
+    // --- MODE: ADD NEW ENTRY (TIMELINE FIXED INSERTION) ---
+    let currentSheetData = sheet.getDataRange().getValues();
+    let lastRowWithContent = sheet.getLastRow();
+    let incomingCheckInTime = dParsed.getTime();
 
-  // --- 4. MAP DATA VECTOR ARRAY ---
-  let newRow = new Array(headers.length).fill("");
-  if (mapping.Name !== -1) newRow[mapping.Name] = payload.name;
-  if (mapping.Amount !== -1) newRow[mapping.Amount] = payload.amount;
-  if (monthColIdx !== -1) newRow[monthColIdx] = generatedMonthLabel;
-  
-  // Clean Source matching data validation constraint exactly ("AirBnb" or "Personal")
-  if (mapping.Source !== -1) {
-    let cleanSource = payload.source.toString().trim().toLowerCase();
-    newRow[mapping.Source] = cleanSource.includes("airbnb") ? "AirBnb" : "Personal";
-  }
-  
-  // Clean Floor matching data validation constraint exactly ("Ground" or "Second")
-  if (mapping.Floor !== -1) {
-    let cleanFloor = payload.floor.toString().trim().toLowerCase();
-    newRow[mapping.Floor] = cleanFloor.includes("second") ? "Second" : "Ground";
-  }
-  
-  if (mapping.Mobile !== -1) newRow[mapping.Mobile] = cleanMobile;
-  if (mapping.CheckIn !== -1) newRow[mapping.CheckIn] = standardizedCheckInString;
-  if (mapping.Days !== -1) newRow[mapping.Days] = payload.days;
-  if (mapping.Guests !== -1) newRow[mapping.Guests] = payload.guests;
-  if (mapping.Ratings !== -1) newRow[mapping.Ratings] = payload.ratings;
-  if (mapping.Comments !== -1) newRow[mapping.Comments] = payload.comments;
+    let insertionRowIndex = lastRowWithContent;
+    let foundInsertionSpot = false;
 
-  // --- 5. TIMELINE FIXED INSERTION ROUTINE ---
-  let currentSheetData = sheet.getDataRange().getValues();
-  let lastRowWithContent = sheet.getLastRow();
-  
-  let insertionRowIndex = lastRowWithContent; 
-  let foundInsertionSpot = false;
-
-  for (let i = currentSheetData.length - 1; i >= 1; i--) {
-    let rowCheckInVal = currentSheetData[i][mapping.CheckIn];
-    
-    if (rowCheckInVal) {
-      let rowDate = parseDateSecurely(rowCheckInVal);
-      
-      if (rowDate) {
-        let rowDateTime = rowDate.getTime();
-        if (rowDateTime <= incomingCheckInTime) {
-          insertionRowIndex = i + 1; 
-          foundInsertionSpot = true;
-          break;
+    for (let i = currentSheetData.length - 1; i >= 1; i--) {
+      let rowCheckInVal = currentSheetData[i][mapping.CheckIn];
+      if (rowCheckInVal) {
+        let rowDate = parseDateSecurely(rowCheckInVal);
+        if (rowDate) {
+          if (rowDate.getTime() <= incomingCheckInTime) {
+            insertionRowIndex = i + 1;
+            foundInsertionSpot = true;
+            break;
+          }
         }
       }
     }
+
+    if (!foundInsertionSpot && lastRowWithContent > 1) {
+      insertionRowIndex = 1;
+    }
+
+    console.log(`>>> [ADD SUCCESS] Inserting ${payload.name} safely after row: [${insertionRowIndex}]`);
+    sheet.insertRowsAfter(insertionRowIndex, 1);
+
+    let templateRow = (insertionRowIndex === 1) ? 2 : insertionRowIndex;
+    let templateRange = sheet.getRange(templateRow, 1, 1, headers.length);
+    let targetRange = sheet.getRange(insertionRowIndex + 1, 1, 1, headers.length);
+
+    templateRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    targetRange.setValues([newRow]);
   }
 
-  if (!foundInsertionSpot && lastRowWithContent > 1) {
-    insertionRowIndex = 1;
-  }
-
-  console.log(`>>> [FORM TARGET COMPLIANCE] Inserting ${payload.name} safely after row: [${insertionRowIndex}]`);
-
-  sheet.insertRowsAfter(insertionRowIndex, 1);
-  
-  let templateRow = (insertionRowIndex === 1) ? 2 : insertionRowIndex; 
-  let templateRange = sheet.getRange(templateRow, 1, 1, headers.length);
-  let targetRange = sheet.getRange(insertionRowIndex + 1, 1, 1, headers.length);
-  
-  templateRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-  targetRange.setValues([newRow]);
+  // =========================================================================
+  // --- 5. AUTOMATED SHEET RE-SORTATION ENGINE ---
+  // =========================================================================
+  // This step ensures your ledger stays perfectly chronological, whether adding or editing
   SpreadsheetApp.flush();
+  const activeLastRow = sheet.getLastRow();
+  if (activeLastRow > 1) {
+    // Sorts range by the "Check-in Date" column index ascending, keeping headers intact
+    const sortTargetRange = sheet.getRange(2, 1, activeLastRow - 1, headers.length);
+    sortTargetRange.sort({ column: mapping.CheckIn + 1, ascending: true });
+    console.log(">>> [SORT ENGINE] Sheet successfully sorted chronologically by Check-in Date.");
+  }
 
+  SpreadsheetApp.flush();
   return "SUCCESS";
 }
 
@@ -690,7 +696,7 @@ function parseDateSecurely(dateVal) {
   }
 
   let dateStr = dateVal.toString().trim();
-  
+
   // Fixes HTML standard format layout detection (YYYY-MM-DD)
   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     let parts = dateStr.split("-");
@@ -700,28 +706,28 @@ function parseDateSecurely(dateVal) {
 
   let parsed = new Date(dateStr);
   if (!isNaN(parsed.getTime())) return parsed;
-  
+
   const monthsMap = {
-    jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11,
-    january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
   };
-  
+
   let tokens = dateStr.replace(/,/g, "").split(/\s+/);
   if (tokens.length >= 2) {
     let day = parseInt(tokens[1]);
     let monthStr = tokens[0].toLowerCase();
     let year = parseInt(tokens[2]) || new Date().getFullYear();
-    
+
     if (isNaN(day)) {
       day = parseInt(tokens[0]);
       monthStr = tokens[1].toLowerCase();
     }
-    
+
     if (!isNaN(day) && monthsMap[monthStr] !== undefined) {
       return new Date(year, monthsMap[monthStr], day);
     }
   }
-  
+
   return null;
 }
 /**
@@ -736,28 +742,28 @@ function parseDateSecurely(dateVal) {
   let dateStr = dateVal.toString().trim();
   let parsed = new Date(dateStr);
   if (!isNaN(parsed.getTime())) return parsed;
-  
+
   const monthsMap = {
-    jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11,
-    january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
   };
-  
+
   let tokens = dateStr.replace(/,/g, "").split(/\s+/);
   if (tokens.length >= 2) {
     let day = parseInt(tokens[1]);
     let monthStr = tokens[0].toLowerCase();
     let year = parseInt(tokens[2]) || new Date().getFullYear();
-    
+
     if (isNaN(day)) {
       day = parseInt(tokens[0]);
       monthStr = tokens[1].toLowerCase();
     }
-    
+
     if (!isNaN(day) && monthsMap[monthStr] !== undefined) {
       return new Date(year, monthsMap[monthStr], day);
     }
   }
-  
+
   return null;
 }
 
@@ -773,28 +779,28 @@ function parseDateSecurely(dateVal) {
   let dateStr = dateVal.toString().trim();
   let parsed = new Date(dateStr);
   if (!isNaN(parsed.getTime())) return parsed;
-  
+
   const monthsMap = {
-    jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11,
-    january:0, february:1, march:2, april:3, may:4, june:5, july:6, august:7, september:8, october:9, november:10, december:11
+    jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+    january: 0, february: 1, march: 2, april: 3, may: 4, june: 5, july: 6, august: 7, september: 8, october: 9, november: 10, december: 11
   };
-  
+
   let tokens = dateStr.replace(/,/g, "").split(/\s+/);
   if (tokens.length >= 2) {
     let day = parseInt(tokens[1]);
     let monthStr = tokens[0].toLowerCase();
     let year = parseInt(tokens[2]) || new Date().getFullYear();
-    
+
     if (isNaN(day)) {
       day = parseInt(tokens[0]);
       monthStr = tokens[1].toLowerCase();
     }
-    
+
     if (!isNaN(day) && monthsMap[monthStr] !== undefined) {
       return new Date(year, monthsMap[monthStr], day);
     }
   }
-  
+
   return null;
 }
 
@@ -860,49 +866,49 @@ function listAllTabNames() {
 function test_syncAirbnbEmails() {
   try {
     console.log(">>> [TEST] Starting Airbnb Sync Parser Test...");
-    
+
     // 1. Target Sri Harsha's specific thread using the exact subject line from your PDF
     const searchQuery = 'from:automated@airbnb.com subject:"Reservation confirmed - Sri Harsha Kuchimanchi arrives May 30"';
     const threads = GmailApp.search(searchQuery, 0, 1);
-    
+
     if (threads.length === 0) {
       console.warn(">>> [TEST] Could not find Sri Harsha's email thread. Ensure the email is in your inbox/trash and hasn't been permanently deleted.");
       return;
     }
 
-    syncAirbnbEmails("2026"); 
-    
+    syncAirbnbEmails("2026");
+
     const message = threads[0].getMessages()[0];
     const subject = message.getSubject();
     const body = message.getPlainBody();
-    
+
     console.log(">>> [TEST] Found Email Subject: " + subject);
-    
+
     // 2. Execute the exact Regular Expressions used in your main function
     const currentYear = "2026";
     const subjectMatch = subject.match(/Reservation confirmed\s*-\s*(.*?)\s+arrives\s+(.*)/i);
-    
+
     let guestName = "";
     let checkInStr = "";
-    
+
     if (subjectMatch) {
-      guestName = subjectMatch[1].trim(); 
+      guestName = subjectMatch[1].trim();
       checkInStr = subjectMatch[2].trim() + `, ${currentYear}`;
     }
-    
+
     const nightsMatch = body.match(/(\d+)\s*nights\s*room\s*fee/i) || body.match(/(\d+)\s*night/i);
     const nights = nightsMatch ? Number(nightsMatch[1]) : 1;
-    
+
     const amountMatch = body.match(/You earn[\s\S]*?₹?\s*([\d,]+\.?\d*)/i);
     let finalAmount = "0";
     if (amountMatch) {
-      let rawAmt = amountMatch[1].replace(/,/g, ""); 
+      let rawAmt = amountMatch[1].replace(/,/g, "");
       finalAmount = Math.round(parseFloat(rawAmt)).toString();
     }
-    
+
     const guestsMatch = body.match(/(\d+)\s*adults/i) || body.match(/(\d+)\s*guest/i);
     const totalGuests = guestsMatch ? Number(guestsMatch[1]) : 2;
-    
+
     // 3. Output the parsed results directly to the execution log
     console.log("----------------------------------------");
     console.log(">>> [TEST] PARSE RESULTS:");
@@ -912,7 +918,7 @@ function test_syncAirbnbEmails() {
     console.log("Parsed Payout Amount: ", finalAmount, (finalAmount === "4586" ? "✅ MATCH" : "❌ MISMATCH"));
     console.log("Parsed Guests: ", totalGuests, (totalGuests === 2 ? "✅ MATCH" : "❌ MISMATCH"));
     console.log("----------------------------------------");
-    
+
   } catch (err) {
     console.error(">>> [TEST] Test function execution crashed: " + err.message);
   }
@@ -941,10 +947,10 @@ function debug_removeSyncLabel() {
  */
 function debug_writeGuestDataRow_Suite() {
   console.log("=== 🧪 STARTING writeGuestDataRow DEBUG SUITE 🧪 ===");
-  
+
   // Choose a real or test year sheet tab present in your spreadsheet
-  const testYear = "2026"; 
-  
+  const testYear = "2026";
+
   // -----------------------------------------------------------------
   // TEST CASE 1: INSERT NEW RECORD (ADD MODE)
   // -----------------------------------------------------------------
@@ -962,7 +968,7 @@ function debug_writeGuestDataRow_Suite() {
     year: testYear,
     rowIndex: "" // Blank for fresh additions
   };
-  
+
   console.log("\n▶️ [TEST 1] Dispatching ADD payload for:", addPayload.name);
   try {
     const addResult = writeGuestDataRow("ADD", addPayload);
@@ -997,7 +1003,7 @@ function debug_writeGuestDataRow_Suite() {
   } catch (error) {
     console.error("❌ [TEST 2 FAILED] Execution crashed with error:", error.message);
   }
-  
+
   console.log("\n=== 🧪 DEBUG SUITE COMPLETION LOGS END ===");
 }
 
@@ -1008,24 +1014,24 @@ function debug_writeGuestDataRow_Suite() {
  */
 function runDebugTests() {
   console.log("=== STARTING AIRBNB SYNC ENGINE DEBUG SUITE ===");
-  
+
   // 1. Setup Mock Headers matching your actual sheet layout
   const mockHeaders = ["Month", "Name", "Guests", "Amount", "Check-in Date", "Days", "AirBnb\\Personal", "Floor", "Customer Ratings", "Comments"];
-  
+
   // 2. TEST CASE 1: A Raw Cancellation Email (The one causing issues)
   const sampleCancelSubject = "Canceled: Reservation HMNXX8RCKX for Jun 15 – 17, 2026";
   const sampleCancelBody = "Hi Host, Reservation HMNXX8RCKX has been canceled by the guest. These dates are now open.";
-  
+
   console.log("\n--- Testing Scenario B: Cancellation Parsing ---");
   debugIndividualPayload(sampleCancelSubject, sampleCancelBody, mockHeaders);
 
   // 3. TEST CASE 2: A Raw Review Email
   const sampleReviewSubject = "Sri Harsha left a 5-star review!";
   const sampleReviewBody = "Read on for a snapshot of what Sri Harsha loved about their stay.";
-  
+
   console.log("\n--- Testing Scenario A: Review Parsing ---");
   debugIndividualPayload(sampleReviewSubject, sampleReviewBody, mockHeaders);
-  
+
   console.log("\n=== DEBUG SUITE COMPLETE ===");
 }
 
@@ -1035,30 +1041,30 @@ function runDebugTests() {
 function debugIndividualPayload(subject, body, headers) {
   const combinedTextToAnalyze = (subject + " " + body);
   const targetYear = "2026";
-  
+
   // --- ISOLATED CANCELLATION TEST ---
   if (combinedTextToAnalyze.toLowerCase().includes("canceled:") || combinedTextToAnalyze.toLowerCase().includes("cancelled:")) {
     console.log("[CHECK] Detected Cancellation Trigger keyword.");
-    
+
     const cancelMatch = combinedTextToAnalyze.match(/Reservation\s+([A-Z0-9]{10})/i) || combinedTextToAnalyze.match(/code\s+([A-Z0-9]{10})/i);
     const dateMatch = subject.match(/for\s+([A-Z][a-z]{2}\s+\d+)/i);
-    
+
     let backupCheckInStr = "";
     if (dateMatch) {
       backupCheckInStr = dateMatch[1].trim() + `, ${targetYear}`;
     }
-    
+
     console.log(`-> Extracted Code: ${cancelMatch ? cancelMatch[1] : "FAILED TO PARSE CODE"}`);
     console.log(`-> Extracted Backup Date: ${backupCheckInStr || "FAILED TO PARSE DATE"}`);
     return;
   }
-  
+
   // --- ISOLATED REVIEW TEST ---
   if (combinedTextToAnalyze.toLowerCase().includes("left a") && combinedTextToAnalyze.toLowerCase().includes("review")) {
     console.log("[CHECK] Detected Review Trigger keywords.");
-    
+
     const reviewMatch = combinedTextToAnalyze.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+left\s+a\s+(\d+)-star\s+review/i);
-    
+
     if (reviewMatch) {
       console.log(`-> Extracted Reviewer Name: ${reviewMatch[1]}`);
       console.log(`-> Extracted Rating: ${reviewMatch[2]} Stars`);

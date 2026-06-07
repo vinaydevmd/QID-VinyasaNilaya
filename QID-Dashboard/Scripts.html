@@ -308,6 +308,23 @@ function rebuildMonthDropdown(guests) {
     }
 }
 
+// =========================================================================
+// STANDALONE ENCODED MESSAGE LINK HELPER (Prevents Template Nesting Syntax Errors)
+// =========================================================================
+function getEncodedWAMessageLink(type, phone, guestName) {
+    const guestFirstName = guestName ? guestName.split(' ')[0] : 'Guest';
+    let msg = '';
+    
+    if (type === 'verification') {
+        msg = 'Hello ' + guestFirstName + ',\n\nThank you for choosing Vinyasa Nilaya! 🏡\n\nTo ensure a seamless arrival, please check your registration profile and submit your digital ID verification using our secure dashboard portal link here:\n👉 https://vinyasanilaya.s.gy/GuestVerification\n\nWe look forward to welcoming you soon! Let us know if you need any assistance before check-in.';
+    } else if (type === 'welcome') {
+        msg = 'Hello ' + guestFirstName + ',\n\nWelcome to Vinyasa Nilaya! ✨\n\nYour check-in is ready. We hope you have an incredible, relaxing stay with us. If you have any questions regarding the house guides, amenities, or local check-ins, feel free to drop us a message anytime right here.\n\nEnjoy your time!';
+    } else if (type === 'feedback') {
+        msg = 'Hello ' + guestFirstName + ',\n\nThank you for staying at Vinyasa Nilaya! 🌿\n\nWe hope you had a wonderful trip and felt completely at home. Your feedback means the world to us. Could you take a brief minute to share your review and experience? Your feedback helps us continue crafting amazing stays for the community.\n\nSafe travels, and we look forward to hosting you again!';
+    }
+    
+    return 'https://api.whatsapp.com/send?phone=' + phone + '&text=' + encodeURIComponent(msg);
+}
 
 // 1st Version for EDIT\ADD Model
 function renderDashboard(data) {
@@ -369,46 +386,95 @@ function renderDashboard(data) {
     let normalizedGuests = [];
     
     if (Array.isArray(data.guests)) {
-        // If it is a real array, shallow copy it safely
         normalizedGuests = data.guests.slice();
     } else if (typeof data.guests === 'object') {
-        // If Google serialized it as an object dictionary, extract the item values sequentially
         normalizedGuests = Object.keys(data.guests)
                                  .sort((a, b) => Number(a) - Number(b))
                                  .map(key => data.guests[key]);
     }
 
-    // Double check that we actually have populated booking elements to loop through
     if (normalizedGuests.length === 0) {
         console.warn(">>> [DEBUG] Normalized array tracking registers 0 entries.");
         feed.innerHTML = '<div class="text-center mt-5 text-muted">No entries found for this period.</div>';
         return;
     }
 
-    // Execute the array inversion layout order
     const invertedGuestFeed = normalizedGuests.reverse();
 
     invertedGuestFeed.forEach((guest, index) => {
         const source = guest.Source || "Personal";
         const sourceClass = source === 'AirBnb' || source === 'Airbnb' ? 'tag-airbnb' : 'tag-personal';
-        
-        // Use the verification status from the server
         const isVerified = guest.isVerified || false; 
 
-        // Define the badge HTML using single quotes to avoid backtick nesting errors
-        const badgeHtml = isVerified ? 
-            '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>Verified ID</span>' : 
-            '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;">Pending ID</span>';
 
-        // Check if WhatsApp_Num exists (from Code.gs) and build the button
-        const whatsappBtn = (guest.WhatsApp_Num && guest.WhatsApp_Num.length >= 10) ? 
-        `<a href="https://wa.me/91${guest.WhatsApp_Num}" target="_blank" 
-            class="btn btn-success rounded-circle d-inline-flex align-items-center justify-content-center shadow-sm ms-3" 
-            style="width: 24px; height: 24px; background-color: #25D366; border: none; padding: 0; min-width: 24px;">
-            <i class="bi bi-whatsapp text-white" style="font-size: 13px; line-height: 1;"></i>
-        </a>` : '';
+        // =========================================================================
+        // DYNAMIC CONTEXT-AWARE BADGE ENGINE
+        // =========================================================================
+        let badgeHtml = '';
+        const cleanSource = (guest.Source || '').toLowerCase().trim();
 
-        // Safe JSON string conversion for inline execution tags, replacing quotes with &quot;
+        if (cleanSource === 'airbnb' || cleanSource === 'airbnb') {
+            // 1. Airbnb handled bookings
+            badgeHtml = '<span class="badge bg-primary-subtle text-primary border-0 rounded-pill" style="font-size: 10px; background-color: #FF5A5F15; color: #FF5A5F !important;"><i class="bi bi-shield-check me-1"></i>Airbnb Verified</span>';
+        } else if (isVerified) {
+            // 2. Personal bookings successfully verified via QID Portal
+            badgeHtml = '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>QID Verified</span>';
+        } else {
+            // 3. Personal bookings with verification outstanding
+            badgeHtml = '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-exclamation me-1"></i>Pending ID</span>';
+        }
+
+        // =========================================================================
+        // ADVANCED WHATSAPP ACTION ENGINE GENERATOR
+        // =========================================================================
+        let whatsappActionsHtml = '';
+        
+        if (guest.WhatsApp_Num && guest.WhatsApp_Num.toString().trim().length >= 10) {
+            let rawNum = guest.WhatsApp_Num.toString().trim();
+            // Standardize raw input to strip out legacy format structures safely
+            if (rawNum.startsWith("+91")) rawNum = rawNum.replace("+91", "").trim();
+            if (rawNum.startsWith("91") && rawNum.length > 10) rawNum = rawNum.substring(2).trim();
+
+            const targetPhone = `91${rawNum}`;
+            const guestFirstName = guest.Name ? guest.Name.split(' ')[0] : 'Guest';
+
+            // Generate clean URL links completely outside the backtick block layout context
+            const linkVerification = getEncodedWAMessageLink('verification', targetPhone, guest.Name);
+            const linkWelcome      = getEncodedWAMessageLink('welcome', targetPhone, guest.Name);
+            const linkFeedback     = getEncodedWAMessageLink('feedback', targetPhone, guest.Name);
+
+            // Structured UI Component Split-Dropdown Menu Element Builder
+            whatsappActionsHtml = `
+                <div class="dropdown d-inline-block ms-2">
+                    <button class="btn btn-sm d-inline-flex align-items-center justify-content-center dropdown-toggle shadow-sm" 
+                            type="button" 
+                            id="waMenu_${index}" 
+                            data-bs-toggle="dropdown" 
+                            aria-expanded="false"
+                            style="background-color: #25D366; color: white; border: none; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; height: 22px;">
+                        <i class="bi bi-whatsapp me-1" style="font-size: 11px;"></i> Chat
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-1" aria-labelledby="waMenu_${index}" style="border-radius: 10px; min-width: 210px; font-size: 12px; z-index: 1050;">
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkVerification}" target="_blank" style="border-radius: 6px;">
+                                <i class="bi bi-shield-check text-success me-2 fs-6"></i> 1. Verification Link
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkWelcome}" target="_blank" style="border-radius: 6px;">
+                                <i class="bi bi-emoji-smile text-primary me-2 fs-6"></i> 2. Welcome Guest
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkFeedback}" target="_blank" style="border-radius: 6px;">
+                                <i class="bi bi-heart text-danger me-2 fs-6"></i> 3. Checkout & Feedback
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            `;
+        }
+
         const safeGuestJson = JSON.stringify(guest).replace(/"/g, '&quot;');
 
         const card = `
@@ -430,7 +496,7 @@ function renderDashboard(data) {
             <div class="d-flex justify-content-between align-items-center mb-2">
               <div class="d-flex align-items-center" style="max-width: 75%;">
                 <h6 class="fw-bold mb-0 text-truncate" style="line-height: 1.2;">${guest.Name}</h6>
-                ${whatsappBtn}
+                ${whatsappActionsHtml}
               </div>
               <div class="text-warning small ms-2" style="white-space: nowrap;">${guest.Customer_Ratings || ''}</div>
             </div>
@@ -458,10 +524,10 @@ function renderDashboard(data) {
                 <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
               </div>
             </div>
-                         
+                                 
             ${guest.Comments ? `
               <div class="mt-2 pt-2 border-top small text-muted">
-                 <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
+                  <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
               </div>
             ` : ''}
           </div>
@@ -470,7 +536,6 @@ function renderDashboard(data) {
     });
     console.log(">>> [DEBUG] Render complete.");
 }
-
 
 /*Airbnb Sync through emails*/
 function triggerAirbnbSync() {
@@ -696,7 +761,7 @@ function handleFormSubmit(e) {
     }
 
     submitBtn.disabled = true;
-    submitBtn.innerText = "Processing Transaction...";
+    submitBtn.innerText = "Processing Booking...";
 
     const mode = document.getElementById('formMode').value;
     const rowIdx = document.getElementById('formRowIndex').value;
