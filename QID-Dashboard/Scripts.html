@@ -52,6 +52,10 @@
    */
   function refreshDashboardData() {
       console.log(">>> [ACTION] Refresh button clicked. Evicting data cache...");
+
+      // Triggers button icon swap and injects the center primary loader placeholder
+      toggleRefreshLoadingState(true);
+
       loadDashboard(true); // Sends 'true' to force a fresh pull from the server
   }
 
@@ -168,22 +172,36 @@ function handleFilterChange() {
    * UI loading toggle helper function to animate icons smoothly
    */
   function toggleRefreshLoadingState(isLoading) {
-      const icon = document.getElementById('refresh-icon');
-      const spinner = document.getElementById('refresh-spinner');
-      const btn = document.getElementById('refresh-dashboard-btn');
-      
-      if (!icon || !spinner || !btn) return;
+    const icon = document.getElementById('refresh-icon');
+    const spinner = document.getElementById('refresh-spinner');
+    const btn = document.getElementById('refresh-dashboard-btn');
+    const feedContainer = document.getElementById('guest-feed'); // Target the main layout card area
+    
+    if (!icon || !spinner || !btn) return;
 
-      if (isLoading) {
-          icon.classList.add('d-none');
-          spinner.classList.remove('d-none');
-          btn.disabled = true;
-      } else {
-          icon.classList.remove('d-none');
-          spinner.classList.add('d-none');
-          btn.disabled = false;
-      }
-  }
+    if (isLoading) {
+        // 1. Convert the header button state to spinning
+        icon.classList.add('d-none');
+        spinner.classList.remove('d-none');
+        btn.disabled = true;
+
+        // 2. ENFORCED: Inject your exact primary center spinner back into the feed
+        if (feedContainer) {
+            feedContainer.innerHTML = `
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary opacity-25" role="status"></div>
+                </div>
+            `;
+        }
+    } else {
+        // 3. Revert header button back to normal arrow icon
+        icon.classList.remove('d-none');
+        spinner.classList.add('d-none');
+        btn.disabled = false;
+        
+        // Note: feedContainer.innerHTML is handled and replaced natively by renderDashboard(data)
+    }
+}
 
   // Ensure tooltips map correctly to the fresh elements on lifecycle load sequence
   document.addEventListener("DOMContentLoaded", function() {
@@ -331,6 +349,9 @@ function renderDashboard(data) {
     // 1. Log the entire raw response from the server
     console.log(">>> [DEBUG] Server Data Received:", data);
 
+    // --- TURN OFF ALL SPINNERS AUTOMATICALLY ---
+    toggleRefreshLoadingState(false);
+
     // 2. Initial Null Check with specific log
     if (!data) {
         console.error(">>> [ERROR] Data is null or undefined.");
@@ -406,23 +427,21 @@ function renderDashboard(data) {
         const sourceClass = source === 'AirBnb' || source === 'Airbnb' ? 'tag-airbnb' : 'tag-personal';
         const isVerified = guest.isVerified || false; 
 
-
         // =========================================================================
         // DYNAMIC CONTEXT-AWARE BADGE ENGINE
         // =========================================================================
         let badgeHtml = '';
         const cleanSource = (guest.Source || '').toLowerCase().trim();
 
-        if (cleanSource === 'airbnb' || cleanSource === 'airbnb') {
-            // 1. Airbnb handled bookings
+        if (cleanSource === 'airbnb') {
             badgeHtml = '<span class="badge bg-primary-subtle text-primary border-0 rounded-pill" style="font-size: 10px; background-color: #FF5A5F15; color: #FF5A5F !important;"><i class="bi bi-shield-check me-1"></i>Airbnb Verified</span>';
         } else if (isVerified) {
-            // 2. Personal bookings successfully verified via QID Portal
             badgeHtml = '<span class="badge bg-success-subtle text-success border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-check me-1"></i>QID Verified</span>';
         } else {
-            // 3. Personal bookings with verification outstanding
             badgeHtml = '<span class="badge bg-light text-muted border-0 rounded-pill" style="font-size: 10px;"><i class="bi bi-shield-exclamation me-1"></i>Pending ID</span>';
         }
+
+     
 
         // =========================================================================
         // ADVANCED WHATSAPP ACTION ENGINE GENERATOR
@@ -431,19 +450,15 @@ function renderDashboard(data) {
         
         if (guest.WhatsApp_Num && guest.WhatsApp_Num.toString().trim().length >= 10) {
             let rawNum = guest.WhatsApp_Num.toString().trim();
-            // Standardize raw input to strip out legacy format structures safely
             if (rawNum.startsWith("+91")) rawNum = rawNum.replace("+91", "").trim();
             if (rawNum.startsWith("91") && rawNum.length > 10) rawNum = rawNum.substring(2).trim();
 
             const targetPhone = `91${rawNum}`;
-            const guestFirstName = guest.Name ? guest.Name.split(' ')[0] : 'Guest';
 
-            // Generate clean URL links completely outside the backtick block layout context
             const linkVerification = getEncodedWAMessageLink('verification', targetPhone, guest.Name);
             const linkWelcome      = getEncodedWAMessageLink('welcome', targetPhone, guest.Name);
             const linkFeedback     = getEncodedWAMessageLink('feedback', targetPhone, guest.Name);
 
-            // Structured UI Component Split-Dropdown Menu Element Builder
             whatsappActionsHtml = `
                 <div class="dropdown d-inline-block ms-2">
                     <button class="btn btn-sm d-inline-flex align-items-center justify-content-center dropdown-toggle shadow-sm" 
@@ -476,24 +491,35 @@ function renderDashboard(data) {
         }
 
         const safeGuestJson = JSON.stringify(guest).replace(/"/g, '&quot;');
+        const safeNameEscaped = (guest.Name || '').replace(/'/g, "\\'");
+        const guestYear = guest.Check_in_Date ? guest.Check_in_Date.split(',')[1]?.trim() : new Date().getFullYear().toString();
 
         const card = `
           <div class="card guest-card shadow-sm p-3 mb-3 border-0 position-relative" style="border-radius: 14px;">
             
-            <button class="btn btn-link p-2 position-absolute" 
-                    style="top: 12px; right: 12px; color: #a0aec0; z-index: 5; text-decoration: none;" 
-                    onclick="openEditModal(${safeGuestJson})"
-                    data-bs-toggle="tooltip"
-                    data-bs-title="Edit Guest Data">
-              <i class="bi bi-pencil-square text-muted fs-5 transition-color"></i>
-            </button>
+            <div class="position-absolute d-flex gap-2 align-items-center" style="top: 12px; right: 12px; z-index: 10;">
+              <button class="btn btn-link p-1 text-muted shadow-none border-0" 
+                      onclick="openEditModal(${safeGuestJson})"
+                      data-bs-toggle="tooltip"
+                      title="Edit Guest Data"
+                      style="text-decoration: none;">
+                <i class="bi bi-pencil-square text-secondary fs-5"></i>
+              </button>
+              <button class="btn btn-link p-1 text-danger shadow-none border-0" 
+                      onclick="actionPurgeGuestRecord('${safeNameEscaped}', '${guest.Check_in_Date || ''}', '${guestYear}')"
+                      data-bs-toggle="tooltip"
+                      title="Delete Guest Ledger Entry"
+                      style="text-decoration: none;">
+                <i class="bi bi-trash fs-5"></i>
+              </button>
+            </div>
 
-            <div class="d-flex justify-content-between align-items-center mb-2" style="padding-right: 28px;">
+            <div class="d-flex justify-content-between align-items-center mb-2" style="padding-right: 65px;">
               <span class="source-tag ${sourceClass} fw-bold">${source}</span>
               ${badgeHtml}
             </div>
 
-            <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-2" style="padding-right: 20px;">
               <div class="d-flex align-items-center" style="max-width: 75%;">
                 <h6 class="fw-bold mb-0 text-truncate" style="line-height: 1.2;">${guest.Name}</h6>
                 ${whatsappActionsHtml}
@@ -524,7 +550,7 @@ function renderDashboard(data) {
                 <i class="bi bi-geo-alt me-1"></i>${guest.Floor || 'Ground'}
               </div>
             </div>
-                                 
+                                         
             ${guest.Comments ? `
               <div class="mt-2 pt-2 border-top small text-muted">
                   <em><i class="bi bi-chat-dots me-1"></i>${guest.Comments}</em>
@@ -536,7 +562,6 @@ function renderDashboard(data) {
     });
     console.log(">>> [DEBUG] Render complete.");
 }
-
 /*Airbnb Sync through emails*/
 function triggerAirbnbSync() {
     const icon = document.getElementById('sync-icon');
@@ -1093,9 +1118,6 @@ function submitQidProfileEdits() {
 /**
  * Intercept Google Drive URLs and pipe them directly into an in-app lightbox frame
  */
-/**
- * Intercept links and pipe them directly into an in-app lightbox via clean base64 stream bypass
- */
 function launchSecureQidPreview(rawUrl) {
     if (!rawUrl || rawUrl.trim() === "" || rawUrl.indexOf("-") === 0) {
         alert("No valid media proof link attached to this validation profile.");
@@ -1133,5 +1155,36 @@ function launchSecureQidPreview(rawUrl) {
         })
         .getDriveImageAsBase64(rawUrl);
 }
+
+/** Delete guest details***/
+/**
+ * Modernized Delete Controller: Launches action prompt confirmation before backend extraction
+ */
+function actionPurgeGuestRecord(name, checkInDate) {
+    showQidActionPrompt({
+        type: "danger",
+        title: "Delete Guest Ledger Entry?",
+        message: `Are you certain you want to permanently delete the entire reservation history for ${name} checking in on ${checkInDate}?`,
+        confirmText: "Delete Guest",
+        onConfirm: function() {
+            
+            // Triggers the inner button loop AND center dashboard layout spinner concurrently!
+            toggleRefreshLoadingState(true);
+            
+            google.script.run
+              .withSuccessHandler(function(response) {
+                  console.log(">>> [DELETE ROW SUCCESS]", response);
+                  if (typeof loadDashboard === "function") {
+                      loadDashboard(true);  
+                  }
+              })
+              .withFailureHandler(function(err) {
+                  alert("Deletion Aborted: " + err.message);
+              })
+              .deleteGuestRowBackend(name, checkInDate); // Dropped year parameter here
+        }
+    });
+}
+
 
 </script>

@@ -206,7 +206,7 @@ function getDashboardData(filterYear, filterMonth) {
         mobileRaw = mobileRaw.slice(-10); // Extract last 10 digits
       }
       obj['WhatsApp_Num'] = mobileRaw;
-      obj['isVerified'] = mobileRaw.length === 10;
+      obj['isVerified'] = findGuestQIDVerified(mobileRaw);
 
       return obj;
     });
@@ -227,10 +227,62 @@ function getDashboardData(filterYear, filterMonth) {
   }
 }
 
+/**
+ * Verifies if a specific WhatsApp/Mobile number exists in the Master QID Verified registry.
+ * Normalizes both inputs to ensure accurate 10-digit matching (ignoring prefixes like +91).
+ * * @param {string|number} whatsappNo - The guest mobile number to look up.
+ * @return {boolean} True if verified in the master ledger, false otherwise.
+ */
+function findGuestQIDVerified(whatsappNo) {
+  if (!whatsappNo) return false;
+  
+  try {
+    // 1. Normalize target number to raw last 10 digits
+    let targetClean = whatsappNo.toString().replace(/\D/g, "");
+    if (targetClean.length > 10) targetClean = targetClean.slice(-10);
+    if (targetClean.length !== 10) return false; // Guard clause against invalid structures
+
+    // 2. Access the Master QID Document
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      console.error(`>>> ❌ [QID LOOKUP ERROR] Tab "${SHEET_NAME_QID}" not found.`);
+      return false;
+    }
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return false; // Empty sheet check
+
+    // 3. Extract data range (starting from row 2 to bypass headers)
+    const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    
+    // Column Index 5 corresponds to Column 6 (Phone / Whatsapp) in your registry sheet mapping
+    const PHONE_COL_INDEX = 5; 
+
+    // 4. Scan column for a sanitized match
+    for (let i = 0; i < data.length; i++) {
+      let cellVal = data[i][PHONE_COL_INDEX];
+      if (cellVal) {
+        let currentClean = cellVal.toString().replace(/\D/g, "");
+        if (currentClean.length > 10) currentClean = currentClean.slice(-10);
+        
+        if (currentClean === targetClean) {
+          console.log(`>>> 🎯 [QID MATCH FOUND] Verified number match at registry index row: ${i + 2}`);
+          return true; // Match found instantly, break loop early
+        }
+      }
+    }
+    
+    return false; // No matches found across the iteration feed
+    
+  } catch (err) {
+    console.error(">>> ❌ [findGuestQIDVerified Exception] Check failed: " + err.message);
+    return false;
+  }
+}
+
 /**** Sync with Airbnb bookings feature - Fresh Confirmations with Daily Timeline Sorting *****/
-/**** Sync with Airbnb bookings feature - Enhanced with De-duplication, Floor Parsing, Live Reviews, & Cancelled Safeguards *****/
-/**** Sync with Airbnb bookings feature - Upgraded to handle Grouped Threads, Reviews, & Cancellations *****/
-/**** Sync with Airbnb bookings feature - Bulletproof Regex & Thread Parsing *****/
 function syncAirbnbEmails(selectedYear) {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
@@ -499,6 +551,18 @@ function syncAirbnbEmails(selectedYear) {
         templateRange.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
         targetRange.setValues([newRowData]);
 
+        // --- CALENDAR SYNC INJECTION POINT ---
+        // Fire sync immediately following successful cell mapping matrix row placement
+        syncBookingToVinyasaCalendar(
+          guestName, 
+          incomingCheckInDate, 
+          totalGuests, 
+          "AirBnb", 
+          "Ground", 
+          nights, 
+          savedComment
+        );
+
         newBookingsCount++;
         processedThread = true;
 
@@ -683,8 +747,124 @@ function writeGuestDataRow(mode, payload) {
     console.log(">>> [SORT ENGINE] Sheet successfully sorted chronologically by Check-in Date.");
   }
 
+  // --- CALENDAR SYNC INJECTION POINT ---
+  // Captures updates from both new manual reservations and profile updates from the dashboard editor
+  syncBookingToVinyasaCalendar(
+    payload.name,
+    dParsed,
+    payload.guests,
+    payload.source,
+    payload.floor,
+    payload.days,
+    payload.comments
+  );
+
   SpreadsheetApp.flush();
   return "SUCCESS";
+}
+
+/**
+ * Core Database & Calendar Sync Writer: Purges an entire reservation entry row
+ * from the sheets AND automatically wipes the matching Google Calendar event.
+ */
+/**
+ * Core Database & Calendar Sync Writer: Purges an entire reservation entry row
+ * from the sheets AND automatically wipes the matching Google Calendar event.
+ */
+function deleteGuestRowBackend(name, checkInStr) {
+  try {
+    if (!checkInStr || checkInStr === "undefined") {
+      throw new Error("Missing mandatory parameter: checkInStr evaluation failed.");
+    }
+
+    // 1. Resolve target spreadsheet year natively on the server side
+    const checkInDateObj = new Date(checkInStr);
+    if (isNaN(checkInDateObj.getTime())) {
+      throw new Error(`Invalid date string received by server: '${checkInStr}'`);
+    }
+    
+    const targetSheetName = checkInDateObj.getFullYear().toString(); // Resolves safely to "2026"
+    
+    const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
+    const sheet = ss.getSheetByName(targetSheetName);
+    
+    if (!sheet) {
+      throw new Error(`Target year data registry tab '${targetSheetName}' could not be discovered.`);
+    }
+    
+    const dataRangeValues = sheet.getDataRange().getValues();
+    const headers = dataRangeValues[0];
+    const nameColIdx = headers.indexOf("Name");
+    const checkInColIdx = headers.indexOf("Check-in Date");
+    
+    if (nameColIdx === -1 || checkInColIdx === -1) {
+      throw new Error("Ledger file corruption: Mandatory tracking columns are missing.");
+    }
+    
+    const targetNameClean = name.toString().trim().toLowerCase();
+    
+    // 2. Traverse the registry rows backwards to avoid index shifting during extraction
+    for (let row = dataRangeValues.length - 1; row >= 1; row--) {
+      const rowName = dataRangeValues[row][nameColIdx] ? dataRangeValues[row][nameColIdx].toString().trim().toLowerCase() : "";
+      
+      // Parse row date to ensure accurate comparison matching format styles
+      const rowCheckInRaw = dataRangeValues[row][checkInColIdx];
+      let rowDateMatch = false;
+      
+      if (rowCheckInRaw) {
+        const rowDateObj = new Date(rowCheckInRaw);
+        if (!isNaN(rowDateObj.getTime())) {
+          // Compare clean time integers rather than volatile string formats
+          rowDateMatch = (rowDateObj.toDateString() === checkInDateObj.toDateString());
+        }
+      }
+      
+      // Match the row identifiers safely
+      if (rowName === targetNameClean && rowDateMatch) {
+        const targetRowPosition = row + 1;
+        
+        // 3. Automated Calendar Purge Module
+        try {
+          const calendarName = "Vinyasa Nilaya";
+          const calendars = CalendarApp.getCalendarsByName(calendarName);
+          const targetCalendar = (calendars.length > 0) ? calendars[0] : CalendarApp.getDefaultCalendar();
+          
+          // Set up a clean 24-hour block window to scan for this specific check-in day
+          const startWindow = new Date(checkInDateObj.getFullYear(), checkInDateObj.getMonth(), checkInDateObj.getDate(), 0, 0, 0);
+          const endWindow = new Date(checkInDateObj.getFullYear(), checkInDateObj.getMonth(), checkInDateObj.getDate(), 23, 59, 59);
+          
+          const events = targetCalendar.getEvents(startWindow, endWindow);
+          let calendarDeletedCount = 0;
+          
+          events.forEach(ev => {
+            const title = ev.getTitle();
+            if (title.toLowerCase().includes(targetNameClean)) {
+              ev.deleteEvent();
+              calendarDeletedCount++;
+            }
+          });
+          
+          if (calendarDeletedCount > 0) {
+            console.log(`✨ [CALENDAR SYNC] Removed ${calendarDeletedCount} timeline blocks for ${name}.`);
+          }
+        } catch (calErr) {
+          console.error("❌ [CALENDAR PURGE ERROR] Sync skipped:", calErr.toString());
+        }
+        
+        // 4. Delete the row out of the spreadsheet layout boundaries
+        sheet.deleteRow(targetRowPosition);
+        SpreadsheetApp.flush(); 
+        
+        console.log(`>>> [BACKEND REMOVAL SUCCESS] Deleted row index [${targetRowPosition}] for guest: ${name}`);
+        return `SUCCESS: Row ${targetRowPosition} eliminated cleanly.`;
+      }
+    }
+    
+    throw new Error(`The requested guest profile context for '${name}' could not be matched within active row limits.`);
+  } catch (err) {
+    console.error(">>> [DELETE GUEST BACKEND FATAL ERROR]", err);
+    throw new Error(err.message);
+  }
 }
 
 /**
@@ -818,37 +998,37 @@ const SHEET_NAME_QID = 'QID-Verified';
  * Pull, serialize, and diagnose raw database matrix rows from the verified QID spreadsheet layout
  */
 function fetchQidVerifiedRegistry() {
-  console.log("=======================================================");
-  console.log(">>> 🔍 [QID DIAGNOSTIC START] Initializing Registry Engine...");
-  console.log("=======================================================");
+ // console.log("=======================================================");
+ // console.log(">>> 🔍 [QID DIAGNOSTIC START] Initializing Registry Engine...");
+ // console.log("=======================================================");
   
   try {
     const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
-    console.log(">>> [DIAGNOSTIC] Active Spreadsheet Name: " + ss.getName());
-    console.log(">>> [DIAGNOSTIC] Active Spreadsheet ID: " + ss.getId());
+   // console.log(">>> [DIAGNOSTIC] Active Spreadsheet Name: " + ss.getName());
+   // console.log(">>> [DIAGNOSTIC] Active Spreadsheet ID: " + ss.getId());
     
     const sheet = ss.getSheetByName(SHEET_NAME_QID);
     
     if (!sheet) {
-      console.error(">>> ❌ [DIAGNOSTIC ERROR] Could not locate sheet tab named precisely: '" + SHEET_NAME_QID + "'");
+     // console.error(">>> ❌ [DIAGNOSTIC ERROR] Could not locate sheet tab named precisely: '" + SHEET_NAME_QID + "'");
       const sheets = ss.getSheets();
       let sheetNames = sheets.map(function(s) { return "'" + s.getName() + "'"; }).join(", ");
-      console.log(">>> [DIAGNOSTIC] Available tabs in this file are: [" + sheetNames + "]");
+     // console.log(">>> [DIAGNOSTIC] Available tabs in this file are: [" + sheetNames + "]");
       return [];
     }
     
     const lastRow = sheet.getLastRow();
     const lastCol = sheet.getLastColumn();
-    console.log(`>>> 📊 [DIAGNOSTIC] Target Sheet Found! Dimensions: [Rows: ${lastRow} | Columns: ${lastCol}]`);
+    //console.log(`>>> 📊 [DIAGNOSTIC] Target Sheet Found! Dimensions: [Rows: ${lastRow} | Columns: ${lastCol}]`);
     
     if (lastRow <= 1) {
-      console.warn(">>> ⚠️ [DIAGNOSTIC WARN] Sheet exists but appears to have NO data rows below the header.");
+     // console.warn(">>> ⚠️ [DIAGNOSTIC WARN] Sheet exists but appears to have NO data rows below the header.");
       return [];
     }
     
     const values = sheet.getDataRange().getValues();
     const headers = values[0];
-    console.log(">>> 📋 [DIAGNOSTIC] Raw Headers Discovered: " + JSON.stringify(headers));
+    //console.log(">>> 📋 [DIAGNOSTIC] Raw Headers Discovered: " + JSON.stringify(headers));
     
     let serializedRecords = [];
     let blankNameCount = 0;
@@ -858,7 +1038,7 @@ function fetchQidVerifiedRegistry() {
       const rawName = row[4]; // Col 5: Name
       
       if (i <= 3) {
-        console.log(`>>> 🔍 [ROW ${i+1} SAMPLE] Raw Array Data: ` + JSON.stringify(row));
+        //console.log(`>>> 🔍 [ROW ${i+1} SAMPLE] Raw Array Data: ` + JSON.stringify(row));
         console.log(`>>> [ROW ${i+1} SAMPLE] Extracted Name field (Index 4): "${rawName}"`);
       }
       
@@ -895,10 +1075,10 @@ function fetchQidVerifiedRegistry() {
     }
 
     
-    console.log(`=======================================================`);
-    console.log(`>>> 🏁 [QID DIAGNOSTIC END] Successfully parsed: [${serializedRecords.length}] records.`);
-    console.log(`>>> [DIAGNOSTIC] Skipped [${blankNameCount}] rows due to empty Name fields.`);
-    console.log(`=======================================================`);
+   // console.log(`=======================================================`);
+   // console.log(`>>> 🏁 [QID DIAGNOSTIC END] Successfully parsed: [${serializedRecords.length}] records.`);
+   // console.log(`>>> [DIAGNOSTIC] Skipped [${blankNameCount}] rows due to empty Name fields.`);
+   // console.log(`=======================================================`);
     
     return serializedRecords.reverse();
     
@@ -907,53 +1087,6 @@ function fetchQidVerifiedRegistry() {
     throw new Error(err.message);
   }
 }
-/*function fetchQidVerifiedRegistry() {
-  try {
-    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
-    const sheet = ss.getSheetByName(SHEET_NAME_QID);
-    
-    if (!sheet) {
-      console.error(">>> [BACKEND ERROR] Could not locate sheet: " + SHEET_NAME_QID);
-      return [];
-    }
-    
-    const values = sheet.getDataRange().getValues();
-    if (values.length <= 1) return []; // Only headers exist
-    
-    let serializedRecords = [];
-    
-    // Match indices exactly based on your data entry array maps
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (!row[4] || row[4].toString().trim() === "") continue; // Skip if Name (Col 5) is empty
-      
-      serializedRecords.push({
-        slNo: row[0],                              // Col 1: SlNo
-        timestamp: row[1],                         // Col 2: Timestamp
-        idType: row[2] || "Govt ID",               // Col 3: ID Type
-        idNo: row[3] || "-",                       // Col 4: ID No
-        name: row[4].toString().trim(),            // Col 5: Name
-        phone: row[5] ? row[5].toString().trim() : "-", // Col 6: Phone / Whatsapp
-        purpose: row[6] || "-",                    // Col 7: Purpose Of Travel
-        arrivingCity: row[7] || "-",               // Col 8: Ariving City
-        emergencyName: row[8] || "-",              // Col 9: Emergency Contact Name
-        emergencyPhone: row[9] || "-",             // Col 10: Emergency Contant No
-        frontUrl: row[10] || "",                   // Col 11: Govt-ID-Front URL
-        backUrl: row[11] || "",                    // Col 12: Govt-ID-Back URL
-        selfieUrl: row[12] || "",                  // Col 13: Selfie URL
-        checkinStatus: row[13] || "Verified",      // Col 14: Checkin status
-        address: row[14] || "-"                    // Col 15: Address
-      });
-    }
-    
-    // Reverse the output so the newest registrations show at the top of your modal hub
-    return serializedRecords.reverse();
-    
-  } catch (err) {
-    console.error(">>> [BACKEND QID FETCH ERROR]", err);
-    throw new Error(err.message);
-  }
-}*/
 
 /**
  * Delete a QID entry safely by anchoring to its unique sequential Serial Number
@@ -1021,6 +1154,157 @@ function modifyQidRowBackend(slNo, updates) {
     throw new Error(err.message);
   }
 }
+
+
+/**
+ * Server-Side Proxy: Fetches a Google Drive asset internally and converts it to a safe inline Base64 stream
+ */
+function getDriveImageAsBase64(rawUrl) {
+  try {
+    if (!rawUrl || rawUrl.trim() === "" || rawUrl.indexOf("-") === 0) return "";
+    
+    let fileId = "";
+    
+    // Extract the raw file ID out of whatever format is stored in the sheet
+    if (rawUrl.indexOf("id=") !== -1) {
+      fileId = rawUrl.split("id=")[1].split("&")[0];
+    } else {
+      const matches = rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      fileId = (matches && matches[1]) ? matches[1] : "";
+    }
+    
+    if (!fileId) throw new Error("Could not parse file identifier.");
+    
+    // Fetch the file bytes directly inside Google's cloud boundaries
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    const bytes = blob.getBytes();
+    const contentType = blob.getContentType();
+    
+    // Encode to a clean inline web asset string
+    const base64String = Utilities.base64Encode(bytes);
+    return `data:${contentType};base64,${base64String}`;
+    
+  } catch (err) {
+    console.error(">>> [PROXY ERROR] Failed to stream image file bytes: ", err);
+    return "ERROR";
+  }
+}
+
+/**
+ * Perform secure inline data mapping modifications for verified guest registry records
+ */
+function modifyQidRowBackend(slNo, updates) {
+  try {
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      throw new Error("Target registration spreadsheet tab configuration could not be opened.");
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < values.length; i++) {
+      if (parseInt(values[i][0]) === parseInt(slNo)) {
+        const actualRowInSheet = i + 1;
+        
+        // --- SECURE COLUMN ORIENTATION RE-MAPPING ---
+        // Col 4 (Index 3) -> ID Document Number
+        // Col 5 (Index 4) -> Guest Full Name
+        // Col 6 (Index 5) -> Phone/WhatsApp Mobile Identity
+        sheet.getRange(actualRowInSheet, 4).setValue(updates.idNo);
+        sheet.getRange(actualRowInSheet, 5).setValue(updates.name);
+        sheet.getRange(actualRowInSheet, 6).setValue(updates.phone);
+        
+        SpreadsheetApp.flush(); // Flush updates out of internal caches straight into the file cell blocks
+        console.log(">>> [BACKEND LEDGER SAVE COMPLETED] Modified SlNo [" + slNo + "] inside Row Matrix [" + actualRowInSheet + "]");
+        return "SUCCESS";
+      }
+    }
+    throw new Error("Record referencing identification sequence index " + slNo + " vanished unexpectedly.");
+  } catch (err) {
+    console.error(">>> [MODIFY QID BACKEND EXCEPTION]", err);
+    throw new Error(err.message);
+  }
+}
+
+
+/*** Google calender sync */
+/**
+ * Global Sync Engine: Creates or updates an all-day event on the Vinyasa Nilaya calendar
+ * Attaches a professional metadata overview card and locks an alert reminder exactly 1 day prior.
+ */
+function syncBookingToVinyasaCalendar(guestName, checkInDateInput, totalGuests, platformType, floorName, nights, notes) {
+  try {
+    const calendarName = "Vinyasa Nilaya";
+    const calendars = CalendarApp.getCalendarsByName(calendarName);
+    const targetCalendar = (calendars.length > 0) ? calendars[0] : CalendarApp.getDefaultCalendar();
+
+    // 1. Resolve date object coordinates safely across input variants
+    let checkInDate = (checkInDateInput instanceof Date) ? checkInDateInput : new Date(checkInDateInput);
+    if (isNaN(checkInDate.getTime())) {
+      // Fallback helper pattern for manual or non-standard date text representations
+      checkInDate = parseDateSecurely(checkInDateInput) || new Date();
+    }
+
+    // 2. Establish uniform naming blueprints to easily query for duplicates/updates later
+    const eventTitle = `Guest Check-In: ${guestName} (${platformType || 'Booking'})`;
+    const searchToken = `[Guest: ${guestName.trim()}]`;
+
+    // 3. Render a highly professional text block card layout
+    const eventDescription = [
+      `=========================================`,
+      `       VINYASA NILAYA RESERVATION        `,
+      `=========================================`,
+      `Guest Name    : ${guestName}`,
+      `Booking Channel: ${platformType || 'Direct Personal'}`,
+      `Allocated Floor: ${floorName || 'Ground'} Floor`,
+      `Total Guests  : ${totalGuests || 1} Pax`,
+      `Duration      : ${nights || 1} Night(s)`,
+      `Check-In Date : ${checkInDate.toDateString()}`,
+      `-----------------------------------------`,
+      `Reference Information / Notes:`,
+      `${notes || 'No operational comments attached.'}`,
+      `=========================================`,
+      `Synced automatically via Vinyasa Workspace Integration Hub.`
+    ].join('\n');
+
+    // 4. Query existing time metrics to verify if this entry already has an event
+    const searchStart = new Date(checkInDate.getTime());
+    searchStart.setHours(0, 0, 0, 0);
+    const searchEnd = new Date(checkInDate.getTime());
+    searchEnd.setHours(23, 59, 59, 999);
+
+    const matchCriteria = targetCalendar.getEvents(searchStart, searchEnd, { search: searchToken });
+    let targetEvent;
+
+    if (matchCriteria.length > 0) {
+      // Update the existing event cleanly if details or notes changed
+      targetEvent = matchCriteria[0];
+      targetEvent.setTitle(eventTitle);
+      targetEvent.setDescription(eventDescription);
+      console.log(`>>> [CALENDAR ENGINE] Updated reservation parameters for: ${guestName}`);
+    } else {
+      // Append a fresh all-day block into the calendar grid
+      targetEvent = targetCalendar.createAllDayEvent(eventTitle, checkInDate, {
+        description: eventDescription
+      });
+      console.log(`>>> [CALENDAR ENGINE] Added new all-day grid block for: ${guestName}`);
+    }
+
+    // 5. ENFORCE 24-HOUR ADVANCE remiNDERS (1440 Minutes)
+    targetEvent.removeAllReminders();
+    targetEvent.addPopupReminder(1440);  // Push alert to all synced mobile/desktop notifications
+    targetEvent.addEmailReminder(1440);  // Email verification confirmation check
+
+    return true;
+  } catch (err) {
+    console.warn(`>>> [CALENDAR INTERCEPT SYSTEM WARNING] Sync bypassed: ${err.toString()}`);
+    return false;
+  }
+}
+
 
 
 /********************* Test functions *************************/
@@ -1294,75 +1578,69 @@ function debugIndividualPayload(subject, body, headers) {
 }
 
 /**
- * Server-Side Proxy: Fetches a Google Drive asset internally and converts it to a safe inline Base64 stream
+ * Test Harness: Executed manually in the editor to isolate and debug
+ * calendar event creation, duplicate search rules, and 24-hour reminder triggers.
  */
-function getDriveImageAsBase64(rawUrl) {
+function debugCalendarSyncWorkflow() {
+  console.log("🚀 [DEBUG START] Initializing Calendar Synchronization Test...");
+  
+  // 1. Simulate a realistic booking payload bundle
+  const mockPayload = {
+    guestName: "Test Guest Vinay",
+    checkInDate: "2026-06-15", // Simulates a future date execution string
+    totalGuests: 3,
+    platformType: "AirBnb",
+    floorName: "Ground",
+    nights: 2,
+    notes: "Code: ABC123XYZ9. Automated debug check runner."
+  };
+  
+  console.log("📋 [MOCK DATA] Payload configuration compiled:", JSON.stringify(mockPayload));
+  
+  // 2. Perform validation pre-checks inside the logs
+  const parsedDateCheck = new Date(mockPayload.checkInDate);
+  console.log(`📅 [DATE PARSING] Raw string '${mockPayload.checkInDate}' translated to Object: ${parsedDateCheck.toString()}`);
+  
+  if (isNaN(parsedDateCheck.getTime())) {
+    console.error("❌ [DATE ERROR] System failed to resolve time coordinates for the incoming check-in date string.");
+    return;
+  }
+  
+  // 3. Verify target calendar accessibility
+  const calendarName = "Vinyasa Nilaya";
+  const calendars = CalendarApp.getCalendarsByName(calendarName);
+  console.log(`🔍 [CALENDAR ACCESSIBILITY] Searching for calendar named: '${calendarName}'`);
+  
+  if (calendars.length === 0) {
+    console.warn(`⚠️ [CALENDAR WARNING] No calendar found named '${calendarName}'. The engine will use your primary default Google Account calendar instead.`);
+  } else {
+    console.log(`✅ [CALENDAR FOUND] Target calendar successfully bound. ID: ${calendars[0].getId()}`);
+  }
+  
+  // 4. Fire the actual live function execution path
+  console.log("⚙️ [EXECUTION] Dispatching payload variables straight to syncBookingToVinyasaCalendar...");
+  
   try {
-    if (!rawUrl || rawUrl.trim() === "" || rawUrl.indexOf("-") === 0) return "";
+    const isSuccess = syncBookingToVinyasaCalendar(
+      mockPayload.guestName,
+      mockPayload.checkInDate,
+      mockPayload.totalGuests,
+      mockPayload.platformType,
+      mockPayload.floorName,
+      mockPayload.nights,
+      mockPayload.notes
+    );
     
-    let fileId = "";
-    
-    // Extract the raw file ID out of whatever format is stored in the sheet
-    if (rawUrl.indexOf("id=") !== -1) {
-      fileId = rawUrl.split("id=")[1].split("&")[0];
+    if (isSuccess) {
+      console.log("🎉 [DEBUG SUCCESS] The sync engine executed flawlessly. Check your Google Calendar grid for June 15, 2026!");
     } else {
-      const matches = rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-      fileId = (matches && matches[1]) ? matches[1] : "";
+      console.error("❌ [DEBUG FAILED] Sync returned false. Read the execution logs above to trace structural bottlenecks.");
     }
-    
-    if (!fileId) throw new Error("Could not parse file identifier.");
-    
-    // Fetch the file bytes directly inside Google's cloud boundaries
-    const file = DriveApp.getFileById(fileId);
-    const blob = file.getBlob();
-    const bytes = blob.getBytes();
-    const contentType = blob.getContentType();
-    
-    // Encode to a clean inline web asset string
-    const base64String = Utilities.base64Encode(bytes);
-    return `data:${contentType};base64,${base64String}`;
     
   } catch (err) {
-    console.error(">>> [PROXY ERROR] Failed to stream image file bytes: ", err);
-    return "ERROR";
+    console.error("💥 [CRITICAL CRASH] The calendar sync workflow thrown an unhandled exception:", err.toString());
   }
-}
-
-/**
- * Perform secure inline data mapping modifications for verified guest registry records
- */
-function modifyQidRowBackend(slNo, updates) {
-  try {
-    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
-    const sheet = ss.getSheetByName(SHEET_NAME_QID);
-    
-    if (!sheet) {
-      throw new Error("Target registration spreadsheet tab configuration could not be opened.");
-    }
-    
-    const values = sheet.getDataRange().getValues();
-    
-    for (let i = 1; i < values.length; i++) {
-      if (parseInt(values[i][0]) === parseInt(slNo)) {
-        const actualRowInSheet = i + 1;
-        
-        // --- SECURE COLUMN ORIENTATION RE-MAPPING ---
-        // Col 4 (Index 3) -> ID Document Number
-        // Col 5 (Index 4) -> Guest Full Name
-        // Col 6 (Index 5) -> Phone/WhatsApp Mobile Identity
-        sheet.getRange(actualRowInSheet, 4).setValue(updates.idNo);
-        sheet.getRange(actualRowInSheet, 5).setValue(updates.name);
-        sheet.getRange(actualRowInSheet, 6).setValue(updates.phone);
-        
-        SpreadsheetApp.flush(); // Flush updates out of internal caches straight into the file cell blocks
-        console.log(">>> [BACKEND LEDGER SAVE COMPLETED] Modified SlNo [" + slNo + "] inside Row Matrix [" + actualRowInSheet + "]");
-        return "SUCCESS";
-      }
-    }
-    throw new Error("Record referencing identification sequence index " + slNo + " vanished unexpectedly.");
-  } catch (err) {
-    console.error(">>> [MODIFY QID BACKEND EXCEPTION]", err);
-    throw new Error(err.message);
-  }
+  
+  console.log("🏁 [DEBUG END] Test sequence completed.");
 }
 
