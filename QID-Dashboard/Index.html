@@ -20,6 +20,15 @@
 
         <div class="d-flex align-items-center gap-2">
 
+          <button class="btn btn-outline-light btn-sm d-inline-flex align-items-center justify-content-center shadow-sm px-2 px-sm-3" 
+                  type="button" 
+                  id="btnQidHub" 
+                  onclick="openQidHubModal()"
+                  style="border-radius: 20px; font-size: 11px; font-weight: 500; height: 32px; white-space: nowrap; max-width: 140px; min-width: 110px;">
+              <i class="bi bi-shield-check text-success me-1" style="font-size: 14px;"></i> 
+              <span style="display: inline-block; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">QID Registry</span>
+          </button>
+
           <button class="btn btn-light btn-sm rounded-circle d-flex align-items-center justify-content-center p-0 shadow-sm border-0"
                   id="refresh-dashboard-btn"
                   onclick="refreshDashboardData()"
@@ -254,6 +263,119 @@
       </div>
     </div>
   </div>
+
+  <div class="modal fade" id="qidPreviewModal" tabindex="-1" aria-labelledby="qidPreviewModalLabel" aria-hidden="true" style="z-index: 1070; background: rgba(0,0,0,0.65);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 bg-transparent text-center shadow-none">
+                <div class="position-relative d-inline-block mx-auto" style="max-width: 92%;">
+                    <button type="button" class="btn btn-dark btn-sm rounded-circle position-absolute" 
+                            data-bs-dismiss="modal" 
+                            style="top: -15px; right: -15px; width: 32px; height: 32px; padding: 0; border: 2px solid #fff; z-index: 10;">
+                        <i class="bi bi-x fs-5"></i>
+                    </button>
+                    <div class="card p-2 border-0 bg-white shadow-lg" style="border-radius: 16px; overflow: hidden;">
+                        <img id="qidPreviewImageFrame" src="" class="img-fluid" style="max-height: 75vh; border-radius: 10px; object-fit: contain;" alt="Secure ID Asset View">
+                        <div id="qidPreviewImageSpinner" class="position-absolute top-50 start-50 translate-middle text-center d-none">
+                            <div class="spinner-border text-success" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+  
+   <div class="modal fade" id="qidHubModal" tabindex="-1" aria-labelledby="qidHubModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-lg-down">
+          <div class="modal-content border-0 shadow" style="border-radius: 16px;">
+              <div class="modal-header bg-light border-bottom py-3 px-4">
+                  <div class="d-flex align-items-center">
+                      <div class="bg-success-subtle p-2 rounded-circle me-3 d-flex align-items-center justify-content-center" style="width: 36px; height: 36px;">
+                          <i class="bi bi-shield-check text-success fs-5"></i>
+                      </div>
+                      <div>
+                          <h5 class="modal-title fw-bold text-dark mb-0" id="qidHubModalLabel">Digital ID Verification Hub</h5>
+                          <small class="text-muted" id="qidCountLabel">Loading verified records...</small>
+                      </div>
+                  </div>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              
+              <div class="modal-body p-3 p-md-4 bg-light-subtle">
+                  <div class="input-group mb-3 shadow-sm rounded-pill bg-white overflow-hidden border">
+                      <span class="input-group-text bg-white border-0 ps-3"><i class="bi bi-search text-muted"></i></span>
+                      <input type="text" id="qidSearchInput" class="form-control border-0 form-control-sm py-2" placeholder="Search by name, phone, or arriving city..." oninput="filterQidRecords()">
+                  </div>
+                  
+                  <div id="qidUserFeed" class="row g-3">
+                      <div class="text-center py-5"><div class="spinner-border spinner-border-sm text-success" role="status"></div></div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>
+
+  <div class="modal fade" id="qidActionModal" tabindex="-1" aria-labelledby="qidActionModalLabel" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 380px;">
+        <div class="modal-content border-0 shadow" style="border-radius: 14px;">
+            <div class="modal-body p-4 text-center">
+                <div id="qidActionIconContainer" class="mb-3 d-flex align-items-center justify-content-center mx-auto rounded-circle" style="width: 56px; height: 56px;">
+                    <i id="qidActionIcon" class="bi fs-3"></i>
+                </div>
+                
+                <h6 class="fw-bold text-dark mb-2" id="qidActionTitle">Confirm Action</h6>
+                <p class="text-muted small mb-4" id="qidActionMessage" style="line-height: 1.5;"></p>
+                
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light btn-sm border px-3 w-50" data-bs-dismiss="modal" id="btnQidActionCancel" style="border-radius: 8px; font-weight: 500; height: 36px;">Cancel</button>
+                    <button type="button" class="btn btn-sm text-white px-3 w-50" id="btnQidActionConfirm" style="border-radius: 8px; font-weight: 500; height: 36px;">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="qidEditUserModal" tabindex="-1" aria-labelledby="qidEditUserModalLabel" aria-hidden="true" style="z-index: 1065;">
+    <div class="modal-dialog modal-dialog-centered modal-sm" style="max-width: 400px;">
+        <div class="modal-content border-0 shadow" style="border-radius: 14px;">
+            <div class="modal-header border-0 pt-4 px-4 pb-2">
+                <h6 class="modal-title fw-bold text-dark d-flex align-items-center">
+                    <i class="bi bi-pencil-square text-success me-2 fs-5"></i> Modify Verified Profile
+                </h6>
+                <button type="button" class="btn-close shadow-none" data-bs-dismiss="modal" aria-label="Close" style="font-size: 10px;"></button>
+            </div>
+            <div class="modal-body px-4 pb-4 pt-2">
+                <form id="formQidEditUser" onsubmit="event.preventDefault(); submitQidProfileEdits();">
+                    <input type="hidden" id="editQidSlNo" value="">
+                    
+                    <div class="mb-3">
+                        <label for="editQidName" class="form-label text-muted small fw-medium mb-1">Verified Full Name</label>
+                        <input type="text" class="form-control form-control-sm border shadow-none" id="editQidName" required style="border-radius: 8px; height: 38px;">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="editQidPhone" class="form-label text-muted small fw-medium mb-1">Associated Mobile Number</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light text-muted border" style="border-radius: 8px 0 0 8px; font-size: 12px; font-weight: 500;">IN</span>
+                            <input type="text" class="form-control border shadow-none" id="editQidPhone" required placeholder="Enter 10-digit number" style="border-radius: 0 8px 8px 0; height: 38px; font-size: 13px;">
+                        </div>
+                        <div class="form-text text-muted" style="font-size: 10px; margin-top: 4px;">Prefixes (+91) and empty spaces are automatically sanitized.</div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="editQidDocNo" class="form-label text-muted small fw-medium mb-1">Government ID Identifier</label>
+                        <input type="text" class="form-control form-control-sm border shadow-none" id="editQidDocNo" required style="border-radius: 8px; height: 38px; font-weight: 500;">
+                    </div>
+                    
+                    <div class="d-flex gap-2 pt-2">
+                        <button type="button" class="btn btn-light btn-sm border px-3 w-50" data-bs-dismiss="modal" style="border-radius: 8px; font-weight: 500; height: 38px;">Cancel</button>
+                        <button type="submit" class="btn btn-success btn-sm text-white px-3 w-50" id="btnQidEditSave" style="border-radius: 8px; font-weight: 500; height: 38px; background-color: #198754;">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 
   <?!= include('Scripts'); ?>
 </body>

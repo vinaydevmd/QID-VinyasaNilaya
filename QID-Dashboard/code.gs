@@ -1,4 +1,5 @@
 var ID_GUESTS_LIST = "1Puw0OezY18OWFt8wtwzv5BFxcJw314Hfov5GZMUXCbk";
+var ID_QID_VERIFIED_LIST = "1cmRFirWeg_tHFbZ9VS-E0Gz80SHHSsIU9lu5jV_GBKk";
 
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
@@ -804,6 +805,223 @@ function parseDateSecurely(dateVal) {
   return null;
 }
 
+/**** QID Verified modal ****/
+// Ensure this constant matches your application constants at the top of Code.gs
+const SHEET_NAME_QID = 'QID-Verified';
+
+/**
+ * Pull and serialize raw database matrix rows from the verified QID spreadsheet layout
+ * 
+ */
+
+/**
+ * Pull, serialize, and diagnose raw database matrix rows from the verified QID spreadsheet layout
+ */
+function fetchQidVerifiedRegistry() {
+  console.log("=======================================================");
+  console.log(">>> 🔍 [QID DIAGNOSTIC START] Initializing Registry Engine...");
+  console.log("=======================================================");
+  
+  try {
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    console.log(">>> [DIAGNOSTIC] Active Spreadsheet Name: " + ss.getName());
+    console.log(">>> [DIAGNOSTIC] Active Spreadsheet ID: " + ss.getId());
+    
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      console.error(">>> ❌ [DIAGNOSTIC ERROR] Could not locate sheet tab named precisely: '" + SHEET_NAME_QID + "'");
+      const sheets = ss.getSheets();
+      let sheetNames = sheets.map(function(s) { return "'" + s.getName() + "'"; }).join(", ");
+      console.log(">>> [DIAGNOSTIC] Available tabs in this file are: [" + sheetNames + "]");
+      return [];
+    }
+    
+    const lastRow = sheet.getLastRow();
+    const lastCol = sheet.getLastColumn();
+    console.log(`>>> 📊 [DIAGNOSTIC] Target Sheet Found! Dimensions: [Rows: ${lastRow} | Columns: ${lastCol}]`);
+    
+    if (lastRow <= 1) {
+      console.warn(">>> ⚠️ [DIAGNOSTIC WARN] Sheet exists but appears to have NO data rows below the header.");
+      return [];
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0];
+    console.log(">>> 📋 [DIAGNOSTIC] Raw Headers Discovered: " + JSON.stringify(headers));
+    
+    let serializedRecords = [];
+    let blankNameCount = 0;
+    
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const rawName = row[4]; // Col 5: Name
+      
+      if (i <= 3) {
+        console.log(`>>> 🔍 [ROW ${i+1} SAMPLE] Raw Array Data: ` + JSON.stringify(row));
+        console.log(`>>> [ROW ${i+1} SAMPLE] Extracted Name field (Index 4): "${rawName}"`);
+      }
+      
+      if (!rawName || rawName.toString().trim() === "") {
+        blankNameCount++;
+        continue; 
+      }
+
+      // --- CRITICAL NETWORK SERIALIZATION FIX ---
+      // Converts raw JavaScript Date Objects to an ISO String to prevent network transfer dropping
+      let safeTimestamp = "";
+      if (row[1]) {
+        safeTimestamp = (row[1] instanceof Date) ? row[1].toISOString() : row[1].toString();
+      }
+      
+      serializedRecords.push({
+        slNo: row[0],                                   // Col 1: SlNo
+        timestamp: safeTimestamp,                       // Col 2: Timestamp
+        idType: row[2] || "Govt ID",                    // Col 3: ID Type
+        idNo: row[3] || "-",                            // Col 4: ID No
+        name: rawName.toString().trim(),                // Col 5: Name
+        phone: row[5] ? row[5].toString().trim() : "-", // Col 6: Phone / Whatsapp
+        purpose: row[6] || "-",                         // Col 7: Purpose Of Travel
+        arrivingCity: row[7] || "-",                    // Col 8: Ariving City
+        emergencyName: row[8] || "-",                   // Col 9: Emergency Contact Name
+        emergencyPhone: row[9] || "-",                  // Col 10: Emergency Contant No
+        frontUrl: row[10] || "",                        // Col 11: Govt-ID-Front URL
+        backUrl: row[11] || "",                         // Col 12: Govt-ID-Back URL
+        selfieUrl: row[12] || "",                       // Col 14: Selfie URL (Index 13 matches your update logic)
+        checkinStatus: row[13] || "Verified",           // Col 13: Checkin status (Index 12)
+        address: row[14] || "-"                         // Col 15: Address
+      });
+    
+    }
+
+    
+    console.log(`=======================================================`);
+    console.log(`>>> 🏁 [QID DIAGNOSTIC END] Successfully parsed: [${serializedRecords.length}] records.`);
+    console.log(`>>> [DIAGNOSTIC] Skipped [${blankNameCount}] rows due to empty Name fields.`);
+    console.log(`=======================================================`);
+    
+    return serializedRecords.reverse();
+    
+  } catch (err) {
+    console.error(">>> ❌ [DIAGNOSTIC CRITICAL EXCEPTION]", err);
+    throw new Error(err.message);
+  }
+}
+/*function fetchQidVerifiedRegistry() {
+  try {
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      console.error(">>> [BACKEND ERROR] Could not locate sheet: " + SHEET_NAME_QID);
+      return [];
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    if (values.length <= 1) return []; // Only headers exist
+    
+    let serializedRecords = [];
+    
+    // Match indices exactly based on your data entry array maps
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      if (!row[4] || row[4].toString().trim() === "") continue; // Skip if Name (Col 5) is empty
+      
+      serializedRecords.push({
+        slNo: row[0],                              // Col 1: SlNo
+        timestamp: row[1],                         // Col 2: Timestamp
+        idType: row[2] || "Govt ID",               // Col 3: ID Type
+        idNo: row[3] || "-",                       // Col 4: ID No
+        name: row[4].toString().trim(),            // Col 5: Name
+        phone: row[5] ? row[5].toString().trim() : "-", // Col 6: Phone / Whatsapp
+        purpose: row[6] || "-",                    // Col 7: Purpose Of Travel
+        arrivingCity: row[7] || "-",               // Col 8: Ariving City
+        emergencyName: row[8] || "-",              // Col 9: Emergency Contact Name
+        emergencyPhone: row[9] || "-",             // Col 10: Emergency Contant No
+        frontUrl: row[10] || "",                   // Col 11: Govt-ID-Front URL
+        backUrl: row[11] || "",                    // Col 12: Govt-ID-Back URL
+        selfieUrl: row[12] || "",                  // Col 13: Selfie URL
+        checkinStatus: row[13] || "Verified",      // Col 14: Checkin status
+        address: row[14] || "-"                    // Col 15: Address
+      });
+    }
+    
+    // Reverse the output so the newest registrations show at the top of your modal hub
+    return serializedRecords.reverse();
+    
+  } catch (err) {
+    console.error(">>> [BACKEND QID FETCH ERROR]", err);
+    throw new Error(err.message);
+  }
+}*/
+
+/**
+ * Delete a QID entry safely by anchoring to its unique sequential Serial Number
+ */
+function deleteQidRowBackend(slNo) {
+  try {
+    // --- FIX: Switch from getActiveSpreadsheet to explicit ID matching ---
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      throw new Error("Target ledger sheet configuration '" + SHEET_NAME_QID + "' not found.");
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < values.length; i++) {
+      // Column A contains the SlNo map index
+      if (parseInt(values[i][0]) === parseInt(slNo)) {
+        const actualRowInSheet = i + 1;
+        sheet.deleteRow(actualRowInSheet);
+        SpreadsheetApp.flush();
+        console.log(">>> [BACKEND DELETE SUCCESS] Removed SlNo [" + slNo + "] at Sheet Row [" + actualRowInSheet + "]");
+        return "SUCCESS";
+      }
+    }
+    throw new Error("Record with Serial Number " + slNo + " was not found inside the ledger matrix.");
+  } catch (err) {
+    console.error(">>> [DELETE QID BACKEND CRITICAL ERROR]", err);
+    throw new Error(err.message);
+  }
+}
+
+/**
+ * Perform custom inline edits for name or phone profiles securely
+ */
+function modifyQidRowBackend(slNo, updates) {
+  try {
+    // --- FIX: Switch from getActiveSpreadsheet to explicit ID matching ---
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      throw new Error("Target ledger sheet configuration '" + SHEET_NAME_QID + "' not found.");
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < values.length; i++) {
+      if (parseInt(values[i][0]) === parseInt(slNo)) {
+        const actualRowInSheet = i + 1;
+        
+        // Update Name (Col 5 -> index 4) & Phone (Col 6 -> index 5)
+        sheet.getRange(actualRowInSheet, 5).setValue(updates.name);
+        sheet.getRange(actualRowInSheet, 6).setValue(updates.phone);
+        
+        SpreadsheetApp.flush();
+        console.log(">>> [BACKEND UPDATE SUCCESS] Modified fields for SlNo [" + slNo + "] at Row [" + actualRowInSheet + "]");
+        return "SUCCESS";
+      }
+    }
+    throw new Error("Record with Serial Number " + slNo + " could not be found.");
+  } catch (err) {
+    console.error(">>> [MODIFY QID BACKEND CRITICAL ERROR]", err);
+    throw new Error(err.message);
+  }
+}
+
 
 /********************* Test functions *************************/
 /**
@@ -1074,3 +1292,77 @@ function debugIndividualPayload(subject, body, headers) {
     return;
   }
 }
+
+/**
+ * Server-Side Proxy: Fetches a Google Drive asset internally and converts it to a safe inline Base64 stream
+ */
+function getDriveImageAsBase64(rawUrl) {
+  try {
+    if (!rawUrl || rawUrl.trim() === "" || rawUrl.indexOf("-") === 0) return "";
+    
+    let fileId = "";
+    
+    // Extract the raw file ID out of whatever format is stored in the sheet
+    if (rawUrl.indexOf("id=") !== -1) {
+      fileId = rawUrl.split("id=")[1].split("&")[0];
+    } else {
+      const matches = rawUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      fileId = (matches && matches[1]) ? matches[1] : "";
+    }
+    
+    if (!fileId) throw new Error("Could not parse file identifier.");
+    
+    // Fetch the file bytes directly inside Google's cloud boundaries
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    const bytes = blob.getBytes();
+    const contentType = blob.getContentType();
+    
+    // Encode to a clean inline web asset string
+    const base64String = Utilities.base64Encode(bytes);
+    return `data:${contentType};base64,${base64String}`;
+    
+  } catch (err) {
+    console.error(">>> [PROXY ERROR] Failed to stream image file bytes: ", err);
+    return "ERROR";
+  }
+}
+
+/**
+ * Perform secure inline data mapping modifications for verified guest registry records
+ */
+function modifyQidRowBackend(slNo, updates) {
+  try {
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    
+    if (!sheet) {
+      throw new Error("Target registration spreadsheet tab configuration could not be opened.");
+    }
+    
+    const values = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < values.length; i++) {
+      if (parseInt(values[i][0]) === parseInt(slNo)) {
+        const actualRowInSheet = i + 1;
+        
+        // --- SECURE COLUMN ORIENTATION RE-MAPPING ---
+        // Col 4 (Index 3) -> ID Document Number
+        // Col 5 (Index 4) -> Guest Full Name
+        // Col 6 (Index 5) -> Phone/WhatsApp Mobile Identity
+        sheet.getRange(actualRowInSheet, 4).setValue(updates.idNo);
+        sheet.getRange(actualRowInSheet, 5).setValue(updates.name);
+        sheet.getRange(actualRowInSheet, 6).setValue(updates.phone);
+        
+        SpreadsheetApp.flush(); // Flush updates out of internal caches straight into the file cell blocks
+        console.log(">>> [BACKEND LEDGER SAVE COMPLETED] Modified SlNo [" + slNo + "] inside Row Matrix [" + actualRowInSheet + "]");
+        return "SUCCESS";
+      }
+    }
+    throw new Error("Record referencing identification sequence index " + slNo + " vanished unexpectedly.");
+  } catch (err) {
+    console.error(">>> [MODIFY QID BACKEND EXCEPTION]", err);
+    throw new Error(err.message);
+  }
+}
+

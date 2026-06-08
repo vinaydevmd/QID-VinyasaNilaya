@@ -802,4 +802,336 @@ function handleFormSubmit(e) {
         })
         .writeGuestDataRow(mode, payload);
 }
+
+// =========================================================================
+// QID DATASTORE & CORE CONTROLLER LOGIC
+// =========================================================================
+let globalQidDataStore = []; 
+
+function getQidModalInstance() {
+    return bootstrap.Modal.getOrCreateInstance(document.getElementById('qidHubModal'));
+}
+
+/**
+ * Open the Hub Modal and pull fresh row maps from the backend database
+ */
+function openQidHubModal() {
+    getQidModalInstance().show();
+    document.getElementById('qidUserFeed').innerHTML = 
+        '<div class="col-12 text-center py-5">' +
+            '<div class="spinner-border text-success spinner-border-sm me-2" role="status"></div>' +
+            '<span class="text-muted small">Accessing Secure ID Vault...</span>' +
+        '</div>';
+    
+    google.script.run
+        .withSuccessHandler(function(records) {
+            globalQidDataStore = records || [];
+            renderQidFeed(globalQidDataStore);
+        })
+        .withFailureHandler(function(err) {
+            document.getElementById('qidUserFeed').innerHTML = 
+                '<div class="col-12 alert alert-danger border-0 shadow-sm mx-2">Failed to load ID Records: ' + err.message + '</div>';
+        })
+        .fetchQidVerifiedRegistry();
+}
+
+/**
+ * Render Data Grid UI Cards optimized for Desktop Grid and Mobile Stacking
+ */
+function renderQidFeed(records) {
+    const feed = document.getElementById('qidUserFeed');
+    document.getElementById('qidCountLabel').innerText = records.length + " Profiles Verified Securely";
+    
+    if (records.length === 0) {
+        feed.innerHTML = '<div class="col-12 text-center py-5 text-muted small">No verified identity mappings discovered.</div>';
+        return;
+    }
+    
+    let html = '';
+    
+    records.forEach(function(user) {
+        // Build document links cleanly using string concatenation to avoid backtick nesting collisions
+        // --- UPGRADED STRUCTURAL FIX: Attach safe in-app dynamic modal launcher scripts ---
+        let frontUrlHtml = '';
+        if (user.frontUrl) {
+            frontUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.frontUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Front</button>`;
+        }
+
+        let backUrlHtml = '';
+        if (user.backUrl) {
+            backUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.backUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Back</button>`;
+        }
+
+        let selfieUrlHtml = '';
+        if (user.selfieUrl) {
+            selfieUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.selfieUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-person-bounding-box me-1 text-success"></i> Selfie</button>`;
+        }
+
+        // Pre-compute text variations and styles
+        const searchText = (user.name + ' ' + user.phone + ' ' + (user.arrivingCity || '')).toLowerCase();
+        const initialLetter = user.idType ? user.idType.charAt(0) : 'ID';
+        const badgeClass = user.checkinStatus === 'Checked In' ? 'bg-success' : 'bg-secondary';
+        const safeNameEscaped = (user.name || '').replace(/'/g, "\\'");
+
+        // Main structural blueprint template layout
+        html += `
+        <div class="col-12 col-md-6 qid-user-card" data-search="${searchText}">
+            <div class="card h-100 border-0 shadow-sm p-3 position-relative bg-white" style="border-radius: 12px;">
+                
+                <div class="position-absolute top-0 end-0 mt-2 me-2" style="z-index: 10;">
+                    <button type="button" class="btn btn-link btn-sm p-1 text-muted me-1" onclick="actionModifyQidUser(${user.slNo})" title="Modify Record">
+                        <i class="bi bi-pencil fs-6 text-secondary"></i>
+                    </button>
+                    <button type="button" class="btn btn-link btn-sm p-1 text-muted" onclick="actionRemoveQidUser(${user.slNo}, '${safeNameEscaped}')" title="Delete Profile">
+                        <i class="bi bi-trash fs-6 text-danger"></i>
+                    </button>
+                </div>
+
+                <div class="d-flex align-items-start mb-2" style="padding-right: 50px;">
+                    <div class="badge bg-success-subtle text-success rounded-circle p-2 me-2 mt-1 d-flex align-items-center justify-content-center" style="font-size: 11px; width:24px; height:24px; font-weight: 600;">
+                        ${initialLetter}
+                    </div>
+                    <div class="text-truncate">
+                        <h6 class="fw-bold text-dark mb-0 text-truncate" style="font-size: 14px;">${user.name}</h6>
+                        <small class="text-muted font-monospace" style="font-size: 11px;">${user.phone}</small>
+                    </div>
+                </div>
+
+                <div id="qidDetails_${user.slNo}">
+                    <div class="row g-2 pt-2 border-top my-1 text-muted" style="font-size: 11.5px;">
+                        <div class="col-6"><strong>ID Details:</strong> <span class="text-dark">${user.idType || 'Govt'} (${user.idNo || '-'})</span></div>
+                        <div class="col-6"><strong>Origin City:</strong> <span class="text-dark">${user.arrivingCity || '-'}</span></div>
+                        <div class="col-6"><strong>Purpose:</strong> <span class="text-dark text-truncate d-block">${user.purpose || '-'}</span></div>
+                        <div class="col-6"><strong>Status:</strong> <span class="badge ${badgeClass} px-2 py-0.5" style="font-size:9px;">${user.checkinStatus || 'Pending'}</span></div>
+                        <div class="col-12 border-top pt-1 mt-1">
+                            <i class="bi bi-telephone-outbound text-warning me-1"></i><strong>SOS Contact:</strong> <span class="text-dark">${user.emergencyName || '-'} (${user.emergencyPhone || '-'})</span>
+                        </div>
+                        <div class="col-12 text-truncate" title="${user.address || '-'}">
+                            <i class="bi bi-geo-alt text-danger me-1"></i><strong>Address:</strong> <span class="text-dark">${user.address || '-'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 pt-2 mt-2 border-top justify-content-start">
+                    ${frontUrlHtml}
+                    ${backUrlHtml}
+                    ${selfieUrlHtml}
+                </div>
+            </div>
+        </div>`;
+    });
+    
+    feed.innerHTML = html;
+}
+
+/**
+ * Instant In-Memory Search Engine Filtering
+ */
+function filterQidRecords() {
+    const term = document.getElementById('qidSearchInput').value.toLowerCase().trim();
+    const cards = document.querySelectorAll('.qid-user-card');
+    
+    cards.forEach(function(card) {
+        const searchPool = card.getAttribute('data-search') || '';
+        card.style.display = searchPool.indexOf(term) !== -1 ? "block" : "none";
+    });
+}
+
+/**
+ * Helper Utility to trigger highly customized professional confirmation/status alerts
+ */
+function showQidActionPrompt(options) {
+    const modalEl = document.getElementById('qidActionModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    
+    // Inject Title & Subtext Details Safely
+    document.getElementById('qidActionTitle').innerText = options.title || "Confirm Action";
+    document.getElementById('qidActionMessage').innerText = options.message || "";
+    
+    // Set Theme Configurations (Danger/Warning/Success)
+    const iconContainer = document.getElementById('qidActionIconContainer');
+    const iconEl = document.getElementById('qidActionIcon');
+    const confirmBtn = document.getElementById('btnQidActionConfirm');
+    
+    // Clear old theme definitions
+    iconContainer.className = "mb-3 d-flex align-items-center justify-content-center mx-auto rounded-circle";
+    confirmBtn.className = "btn btn-sm text-white px-3 w-50";
+    
+    if (options.type === "danger") {
+        iconContainer.classList.add("bg-danger-subtle");
+        iconEl.className = "bi bi-exclamation-triangle text-danger fs-3";
+        confirmBtn.classList.add("bg-danger");
+    } else {
+        iconContainer.classList.add("bg-warning-subtle");
+        iconEl.className = "bi bi-question-circle text-warning fs-3";
+        confirmBtn.classList.add("bg-warning", "text-dark");
+    }
+    
+    // Set confirmation button action text labels
+    confirmBtn.innerText = options.confirmText || "Confirm";
+    
+    // Handle Event Execution Mapping Safely without memory leak piling
+    confirmBtn.onclick = function() {
+        modal.hide();
+        if (typeof options.onConfirm === "function") options.onConfirm();
+    };
+    
+    modal.show();
+}
+
+/**
+ * Modernized Delete Record Execution utilizing professional Bootstrap layouts
+ */
+function actionRemoveQidUser(slNo, name) {
+    showQidActionPrompt({
+        type: "danger",
+        title: "Delete Verified Profile?",
+        message: "Are you certain you want to permanently delete " + name + "'s verification history? This will purge their record inside your spreadsheet ledger maps instantly.",
+        confirmText: "Delete Record",
+        onConfirm: function() {
+            // Keep user context responsive by updating background container elements
+            document.getElementById('qidUserFeed').innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-danger spinner-border-sm me-2" role="status"></div>
+                    <span class="text-danger small fw-medium">Purging profile from registry ledger...</span>
+                </div>`;
+                
+            google.script.run
+                .withSuccessHandler(function(response) {
+                    console.log(">>> [DELETE QID SUCCESS]", response);
+                    openQidHubModal(); // Soft dynamic refresh reload
+                })
+                .withFailureHandler(function(err) {
+                    showQidActionPrompt({
+                        type: "danger",
+                        title: "Operation Failed",
+                        message: "The deletion command dropped unexpectedly: " + err.message,
+                        confirmText: "Close"
+                    });
+                })
+                .deleteQidRowBackend(slNo);
+        }
+    });
+}
+
+/**
+ * Modernized Modifier Module: Opens the editing modal and auto-populates old data values
+ */
+function actionModifyQidUser(slNo) {
+    // Locate target profile within your local globally stored array matrix cache
+    const targetRecord = globalQidDataStore.find(function(u) { return parseInt(u.slNo) === parseInt(slNo); });
+    if (!targetRecord) {
+        alert("Unable to cross-reference file verification data.");
+        return;
+    }
+    
+    // Inject values securely into form elements
+    document.getElementById('editQidSlNo').value = targetRecord.slNo;
+    document.getElementById('editQidName').value = targetRecord.name || "";
+    document.getElementById('editQidDocNo').value = targetRecord.idNo || "";
+    
+    // Sanitize phone number before showing it in the edit input line
+    let cleanPhoneDisplay = (targetRecord.phone || "").toString().replace(/^\+91/, "").replace(/\s+/g, "");
+    document.getElementById('editQidPhone').value = cleanPhoneDisplay;
+    
+    // Fire up the modal overlay element frame cleanly
+    const editModalEl = document.getElementById('qidEditUserModal');
+    const modalInstance = bootstrap.Modal.getOrCreateInstance(editModalEl);
+    modalInstance.show();
+}
+
+/**
+ * Serializes, sanitizes, and sends profile updates to the spreadsheet ledger
+ */
+function submitQidProfileEdits() {
+    const slNo = document.getElementById('editQidSlNo').value;
+    const rawName = document.getElementById('editQidName').value;
+    const rawPhone = document.getElementById('editQidPhone').value;
+    const rawDocNo = document.getElementById('editQidDocNo').value;
+    
+    // --- SYSTEM CORRECTION PRESETS: Strict normalization enforcement ---
+    // Instantly strip trailing spaces, +91 prefixes, and inner dashes
+    const sanitizedName = rawName.trim();
+    const sanitizedDocNo = rawDocNo.trim();
+    const sanitizedPhone = rawPhone.toString().replace(/^\+91/, "").replace(/[-\s()]+/g, "").trim();
+    
+    const saveButton = document.getElementById('btnQidEditSave');
+    saveButton.disabled = true;
+    saveButton.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status"></span> Saving...`;
+    
+    // Fire network call upstream to modify backend data indexes
+    google.script.run
+        .withSuccessHandler(function(response) {
+            saveButton.disabled = false;
+            saveButton.innerText = "Save Changes";
+            
+            // Dismiss the active edit layer panel modal dynamically
+            const editModalEl = document.getElementById('qidEditUserModal');
+            bootstrap.Modal.getOrCreateInstance(editModalEl).hide();
+            
+            console.log(">>> [UPDATE QID PROFILES COMPLETED]", response);
+            openQidHubModal(); // Dynamically re-fetch rows and refresh the dashboard grid
+        })
+        .withFailureHandler(function(err) {
+            saveButton.disabled = false;
+            saveButton.innerText = "Save Changes";
+            
+            showQidActionPrompt({
+                type: "danger",
+                title: "Modification Aborted",
+                message: "Internal ledger synchronization failed: " + err.message,
+                confirmText: "Close"
+            });
+        })
+        .modifyQidRowBackend(slNo, { 
+            name: sanitizedName, 
+            phone: sanitizedPhone,
+            idNo: sanitizedDocNo
+        });
+}
+
+/**
+ * Intercept Google Drive URLs and pipe them directly into an in-app lightbox frame
+ */
+/**
+ * Intercept links and pipe them directly into an in-app lightbox via clean base64 stream bypass
+ */
+function launchSecureQidPreview(rawUrl) {
+    if (!rawUrl || rawUrl.trim() === "" || rawUrl.indexOf("-") === 0) {
+        alert("No valid media proof link attached to this validation profile.");
+        return;
+    }
+    
+    const previewModalEl = document.getElementById('qidPreviewModal');
+    const imageFrame = document.getElementById('qidPreviewImageFrame');
+    const spinner = document.getElementById('qidPreviewImageSpinner');
+    const modalInstance = bootstrap.Modal.getOrCreateInstance(previewModalEl);
+    
+    // 1. Enter Loading State & Display Lightbox Framework instantly
+    imageFrame.style.opacity = "0.0";
+    spinner.classList.remove('d-none');
+    modalInstance.show();
+    
+    // 2. Run the secure internal file stream call
+    google.script.run
+        .withSuccessHandler(function(base64DataStream) {
+            spinner.classList.add('d-none');
+            
+            if (!base64DataStream || base64DataStream === "ERROR") {
+                alert("Google Drive security layer blocked raw URL streaming. Please verify the spreadsheet file layout.");
+                return;
+            }
+            
+            // 3. Inject the safe binary data string directly into the image element
+            imageFrame.src = base64DataStream;
+            imageFrame.style.opacity = "1";
+        })
+        .withFailureHandler(function(err) {
+            spinner.classList.add('d-none');
+            imageFrame.style.opacity = "1";
+            alert("System Transmission Failure: " + err.message);
+        })
+        .getDriveImageAsBase64(rawUrl);
+}
+
 </script>
