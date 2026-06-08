@@ -86,11 +86,38 @@ function getAvailableYearsAndInitialize() {
  * Fetches guest data and summaries based on the specific column headers:
  * Year, Month, Name, NoOfGuests, Amount, Check-in Date, Days, AirBnb\Personal, Floor, Mobile, Customer Ratings, Comments
  */
-
 function getDashboardData(filterYear, filterMonth) {
   try {
     const ss = SpreadsheetApp.openById(ID_GUESTS_LIST);
     const sheets = ss.getSheets();
+
+    // =========================================================================
+    // REQUIRED SPEED CHANGE 1: PRE-FETCH ALL VERIFIED NUMBERS IN ONE ROUND-TRIP
+    // =========================================================================
+    let verifiedMobilesSet = new Set();
+    try {
+      const qidSpreadsheet = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+      const verificationSheet = qidSpreadsheet.getSheetByName(SHEET_NAME_QID); 
+      
+      if (verificationSheet) {
+        const verData = verificationSheet.getDataRange().getValues();
+        const PHONE_COL_INDEX = 5; // Matches Column 6 (Phone / Whatsapp) from your registry
+        
+        for (let i = 1; i < verData.length; i++) {
+          let cellVal = verData[i][PHONE_COL_INDEX];
+          if (cellVal) {
+            let cleanVerMobile = cellVal.toString().replace(/\D/g, "");
+            if (cleanVerMobile.length > 10) cleanVerMobile = cleanVerMobile.slice(-10);
+            if (cleanVerMobile.length === 10) {
+              verifiedMobilesSet.add(cleanVerMobile); // Stored in ultrafast RAM cache
+            }
+          }
+        }
+      }
+    } catch (qidErr) {
+      console.error(">>> [SPEED ENGINE WARNING] Cache pre-fetch failed: " + qidErr.message);
+    }
+    // =========================================================================
 
     // -----------------------------------------------------------------
     // PHASE 1: COMPUTE CONSOLIDATED LIFETIME REVENUE ACROSS ALL YEARS
@@ -101,7 +128,6 @@ function getDashboardData(filterYear, filterMonth) {
     sheets.forEach(sheet => {
       const sheetName = sheet.getName().trim();
 
-      // Isolate sheets that match a 4-digit year pattern (e.g., "2024", "2026")
       if (/^\d{4}$/.test(sheetName)) {
         const sheetData = sheet.getDataRange().getValues();
         const headerRowIdx = sheetData.findIndex(row => row.includes("Name") || row.includes("Amount"));
@@ -112,19 +138,16 @@ function getDashboardData(filterYear, filterMonth) {
           const nameIdx = sheetHeaders.indexOf("Name");
 
           if (amountIdx !== -1) {
-            // Unpack rows beneath the header row
             const sheetRows = sheetData.slice(headerRowIdx + 1);
 
             sheetRows.forEach(row => {
               const nameVal = row[nameIdx] ? row[nameIdx].toString().trim() : "";
-
-              // Standard safety exclusions to match your row filter baseline
               if (!nameVal || nameVal === "Total" || nameVal === "No Guests" || nameVal === "") return;
 
               let amtStr = (row[amountIdx] || "0").toString().replace(/[₹,]/g, "");
               let amtNum = Number(amtStr) || 0;
               lifetimeTotalRevenue += amtNum;
-              lifetimeTotalCheckIns++; // Increment global record counter
+              lifetimeTotalCheckIns++; 
             });
           }
         }
@@ -138,7 +161,6 @@ function getDashboardData(filterYear, filterMonth) {
     let sheet = ss.getSheetByName(targetTab) || ss.getSheets()[0];
 
     const data = sheet.getDataRange().getValues();
-    // Locate header row using "Name" or "Month"
     const headerRowIndex = data.findIndex(row => row.includes("Name") || row.includes("Month"));
 
     if (headerRowIndex === -1) {
@@ -162,8 +184,6 @@ function getDashboardData(filterYear, filterMonth) {
     const filteredData = rows.filter(row => {
       const name = row[headers.indexOf("Name")];
       const month = row[headers.indexOf("Month")];
-
-      // Filter out empty rows, summary rows, or "No Guests" placeholders
       if (!name || name === "Total" || name === "No Guests" || name === "") return false;
 
       const rowMonth = month ? month.toString().trim() : "";
@@ -172,12 +192,9 @@ function getDashboardData(filterYear, filterMonth) {
       let obj = {};
       headers.forEach((header, i) => {
         let key = header.toString();
-
-        // 1. Unify Source Column
         if (key === "AirBnb\\Personal" || key === "Source") {
           key = "Source";
         }
-        // 2. Unify Floor Column Name (Adjust "Floor" to match your exact spreadsheet column header text)
         else if (key === "Floor") {
           key = "Floor";
         }
@@ -186,8 +203,6 @@ function getDashboardData(filterYear, filterMonth) {
         }
 
         let value = row[i];
-
-        // Safety: Convert Date objects to strings for the frontend
         if (value instanceof Date) {
           value = Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
         }
@@ -203,10 +218,15 @@ function getDashboardData(filterYear, filterMonth) {
       // 2. Mobile Sanitization for WhatsApp & Verification
       let mobileRaw = (obj.Mobile || "").toString().replace(/\D/g, "");
       if (mobileRaw.length > 10) {
-        mobileRaw = mobileRaw.slice(-10); // Extract last 10 digits
+        mobileRaw = mobileRaw.slice(-10); 
       }
       obj['WhatsApp_Num'] = mobileRaw;
-      obj['isVerified'] = findGuestQIDVerified(mobileRaw);
+
+      // =========================================================================
+      // REQUIRED SPEED CHANGE 2: USE INSTANT MEMORY SET INSTEAD OF THE SLOW LOOP FUNCTION
+      // =========================================================================
+      obj['isVerified'] = (mobileRaw.length === 10 && verifiedMobilesSet.has(mobileRaw));
+      // =========================================================================
 
       return obj;
     });
@@ -218,7 +238,7 @@ function getDashboardData(filterYear, filterMonth) {
         count: guestCount,
         period: filterMonth ? `${filterMonth} ${targetTab}` : targetTab,
         lifetimeRevenue: lifetimeTotalRevenue.toLocaleString('en-IN', { maximumFractionDigits: 0 }),
-        lifetimeCount: lifetimeTotalCheckIns // 
+        lifetimeCount: lifetimeTotalCheckIns 
       }
     };
   } catch (err) {
@@ -1244,13 +1264,11 @@ function syncBookingToVinyasaCalendar(guestName, checkInDateInput, totalGuests, 
     // 1. Resolve date object coordinates safely across input variants
     let checkInDate = (checkInDateInput instanceof Date) ? checkInDateInput : new Date(checkInDateInput);
     if (isNaN(checkInDate.getTime())) {
-      // Fallback helper pattern for manual or non-standard date text representations
       checkInDate = parseDateSecurely(checkInDateInput) || new Date();
     }
 
-    // 2. Establish uniform naming blueprints to easily query for duplicates/updates later
+    // 2. Establish uniform naming blueprints
     const eventTitle = `Guest Check-In: ${guestName} (${platformType || 'Booking'})`;
-    const searchToken = `[Guest: ${guestName.trim()}]`;
 
     // 3. Render a highly professional text block card layout
     const eventDescription = [
@@ -1270,33 +1288,34 @@ function syncBookingToVinyasaCalendar(guestName, checkInDateInput, totalGuests, 
       `Synced automatically via Vinyasa Workspace Integration Hub.`
     ].join('\n');
 
-    // 4. Query existing time metrics to verify if this entry already has an event
+    // 4. Set up strict 24-hour day checking boundaries
     const searchStart = new Date(checkInDate.getTime());
     searchStart.setHours(0, 0, 0, 0);
     const searchEnd = new Date(checkInDate.getTime());
     searchEnd.setHours(23, 59, 59, 999);
 
-    const matchCriteria = targetCalendar.getEvents(searchStart, searchEnd, { search: searchToken });
-    let targetEvent;
+    // Pull all active grid elements for that specific check-in day
+    const dayEvents = targetCalendar.getEvents(searchStart, searchEnd);
+    
+    // Scan and purge duplicate entries matching the guest name sequence
+    dayEvents.forEach(event => {
+      const currentTitle = event.getTitle();
+      if (currentTitle.toLowerCase().includes(guestName.trim().toLowerCase())) {
+        console.log(`>>> [CALENDAR ENGINE] Dropping old matching layout block: "${currentTitle}"`);
+        event.deleteEvent();
+      }
+    });
 
-    if (matchCriteria.length > 0) {
-      // Update the existing event cleanly if details or notes changed
-      targetEvent = matchCriteria[0];
-      targetEvent.setTitle(eventTitle);
-      targetEvent.setDescription(eventDescription);
-      console.log(`>>> [CALENDAR ENGINE] Updated reservation parameters for: ${guestName}`);
-    } else {
-      // Append a fresh all-day block into the calendar grid
-      targetEvent = targetCalendar.createAllDayEvent(eventTitle, checkInDate, {
-        description: eventDescription
-      });
-      console.log(`>>> [CALENDAR ENGINE] Added new all-day grid block for: ${guestName}`);
-    }
+    // 5. Append a fresh all-day block into the calendar grid
+    const targetEvent = targetCalendar.createAllDayEvent(eventTitle, checkInDate, {
+      description: eventDescription
+    });
+    console.log(`>>> [CALENDAR ENGINE] Added fresh all-day entry block for: ${guestName}`);
 
-    // 5. ENFORCE 24-HOUR ADVANCE remiNDERS (1440 Minutes)
+    // 6. ENFORCE 24-HOUR ADVANCE REMINDERS
     targetEvent.removeAllReminders();
-    targetEvent.addPopupReminder(1440);  // Push alert to all synced mobile/desktop notifications
-    targetEvent.addEmailReminder(1440);  // Email verification confirmation check
+    targetEvent.addPopupReminder(1440);  
+    targetEvent.addEmailReminder(1440);  
 
     return true;
   } catch (err) {

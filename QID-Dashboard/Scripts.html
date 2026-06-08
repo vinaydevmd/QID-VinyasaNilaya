@@ -171,7 +171,7 @@ function handleFilterChange() {
   /**
    * UI loading toggle helper function to animate icons smoothly
    */
-  function toggleRefreshLoadingState(isLoading) {
+   function toggleRefreshLoadingState(isLoading) {
     const icon = document.getElementById('refresh-icon');
     const spinner = document.getElementById('refresh-spinner');
     const btn = document.getElementById('refresh-dashboard-btn');
@@ -752,11 +752,11 @@ function openEditModal(guestObj) {
     const rawFloor = guestObj.Floor ? guestObj.Floor.toString().trim().toLowerCase() : "";
     const floorSelectEl = document.getElementById('inputFloor');
     if (rawFloor.includes("ground") || rawFloor === "g") {
-        floorSelectEl.value = "Ground Floor";
+        floorSelectEl.value = "Ground";
     } else if (rawFloor.includes("second") || rawFloor === "s") {
-        floorSelectEl.value = "Second Floor";
+        floorSelectEl.value = "Second";
     } else {
-        floorSelectEl.value = "Ground Floor"; 
+        floorSelectEl.value = "Ground"; 
     }
 
     const rawRatings = guestObj.Customer_Ratings || "";
