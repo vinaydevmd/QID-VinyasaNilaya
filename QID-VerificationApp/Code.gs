@@ -11,10 +11,25 @@ const IMAGEKIT_FOLDER = "/QID/"; // The folder in your ImageKit media library
 const CLIENT_ID = 'YOUR_DIGILOCKER_CLIENT_ID';
 const REDIRECT_URI = ScriptApp.getService().getUrl();
 
+// Define and freeze absolute Column Layout Maps
+const COL_SLNO = 1;
+const COL_TIMESTAMP = 2;
+const COL_ID_TYPE = 3;
+const COL_ID_NUMBER = 4;
+const COL_NAME = 5;
+const COL_WHATSAPP = 6; // Now visible to every function in the file!
+const COL_PURPOSE = 7;
+const COL_ARRIVING_CITY = 8;
+const COL_EMERGENCY_NAME = 9;
+const COL_EMERGENCY_PHONE = 10;
+const COL_ID_FRONT = 11;
+const COL_ID_BACK = 12;
+const COL_SELFIE = 13;
+const COL_STATUS = 14;
+const COL_ADDRESS = 15;
+
 function doGet(e) {
-  if (e.parameter.code) {
-    return handleDigiLockerCallback(e.parameter.code);
-  }
+
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Guest Verification | Secure Portal')
@@ -27,23 +42,15 @@ function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function getDigiLockerLoginUrl() {
-  if (CLIENT_ID === 'YOUR_DIGILOCKER_CLIENT_ID') return "#";
-  const state = Utilities.getUuid();
-  return "https://test.digitallocker.gov.in/public/oauth2/1/authorize" +
-    "?response_type=code&client_id=" + CLIENT_ID +
-    "&redirect_uri=" + encodeURIComponent(REDIRECT_URI) + "&state=" + state;
-}
-
-function handleDigiLockerCallback(authCode) {
-  // Simply closes the popup or shows success
-  return HtmlService.createHtmlOutput("<script>window.close();</script><h3 style='font-family:sans-serif; text-align:center; margin-top:20%; color:#059669;'>✓ Verified. You may close this window.</h3>");
-}
-
 function processSubmission(data) {
+  console.log("=== EXECUTING SUBMISSION ORCHESTRATION ===");
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) throw new Error("Sheet not found.");
+  if (!sheet) {
+    console.error(`Sheet configuration dynamic target missing: ${SHEET_NAME}`);
+    throw new Error("Target ledger sheet not found.");
+  }
 
   const now = new Date();
 
@@ -57,68 +64,84 @@ function processSubmission(data) {
   // 3. Handle Serial Number (SlNo)
   let finalSlNo;
   if (isUpdate) {
-    // Keep the existing SlNo from Column A (Index 1)
-    finalSlNo = sheet.getRange(targetRow, 1).getValue();
+    finalSlNo = sheet.getRange(targetRow, COL_SLNO).getValue();
+    console.log(`Fetched structural SL No for update sequence: ${finalSlNo}`);
   } else {
     // New Guest: Calculate new SlNo
     const lastRow = sheet.getLastRow();
     finalSlNo = 1;
     if (lastRow > 1) {
-      const lastVal = sheet.getRange(lastRow, 1).getValue();
+      const lastVal = sheet.getRange(lastRow, COL_SLNO).getValue();
       finalSlNo = (typeof lastVal === 'number') ? lastVal + 1 : lastRow;
     }
+    console.log(`Allocated new tracking SlNo index: ${finalSlNo}`);
   }
 
-  // 6. Save to Sheet
+  // Sanitize values (Protocol: Strips out +91 country prefixes automatically)
+  const cleanWhatsapp = data.whatsapp ? String(data.whatsapp).replace(/^(\+91|91)/, '').trim() : "";
+  const cleanEmergencyPhone = data.emergencyPhone ? String(data.emergencyPhone).replace(/^(\+91|91)/, '').trim() : "";
+
+  // Strategy Execution Block
   if (isUpdate && targetRow) {
+    console.log(`Executing isolated cell updates for row target index: ${targetRow}`);
 
-    // 4. Google drive Uploads
-    const selfieUrl = uploadToDrive(data.selfieBase64, finalSlNo, "Selfie", "");
+    let selfieUrl = "";
+    try {
+      if (data.selfieBase64 && data.selfieBase64.includes("base64")) {
+        selfieUrl = uploadToDrive(data.selfieBase64, finalSlNo, "Selfie", "");
+      } else {
+        // Fallback: Retain original storage link if no new image data was sent
+        selfieUrl = sheet.getRange(targetRow, COL_SELFIE).getValue();
+        console.log("No fresh update canvas detected, preserving historical selfie link.");
+      }
+    } catch (err) {
+      console.error("Asset Engine halted during verification photo upload:", err.toString());
+      throw new Error("Failed to process profile validation photo: " + err.toString());
+    }
 
-    // Define your column indices (Update these to match your actual Sheet layout)
-    const COL_TIMESTAMP = 2;
-    const COL_PURPOSE = 7;
-    const COL_ARRIVINGCITY = 8;
-    const COL_EMERGENCYCONTNAME = 9;
-    const COL_EMERGENCYCONTNO = 10;
-    const COL_SELFIE = 13;
-    const COL_CHECKINSTATUS = 14;
-
-
+    // Direct cell mutations
     sheet.getRange(targetRow, COL_TIMESTAMP).setValue(now);
-    sheet.getRange(targetRow, COL_PURPOSE).setValue(data.purpose);
-    sheet.getRange(targetRow, COL_ARRIVINGCITY).setValue(data.city);
-    sheet.getRange(targetRow, COL_EMERGENCYCONTNAME).setValue(data.emergencyName);
-    sheet.getRange(targetRow, COL_EMERGENCYCONTNO).setValue(data.emergencyPhone);
+    sheet.getRange(targetRow, COL_PURPOSE).setValue(data.purpose || "");
+    sheet.getRange(targetRow, COL_ARRIVING_CITY).setValue(data.city || "");
+    sheet.getRange(targetRow, COL_EMERGENCY_NAME).setValue(data.emergencyName || "");
+    sheet.getRange(targetRow, COL_EMERGENCY_PHONE).setValue(cleanEmergencyPhone);
     sheet.getRange(targetRow, COL_SELFIE).setValue(selfieUrl);
-    sheet.getRange(targetRow, COL_CHECKINSTATUS).setValue(checkInStatus);
+    sheet.getRange(targetRow, COL_STATUS).setValue(checkInStatus);
 
   } else {
-    // 4. Google drive Uploads
-    const idFrontUrl = uploadToDrive(data.idFrontBase64, finalSlNo, data.idType, "Front");
-    const idBackUrl = uploadToDrive(data.idBackBase64, finalSlNo, data.idType, "Back");
-    const selfieUrl = uploadToDrive(data.selfieBase64, finalSlNo, "Selfie", "");
+    console.log("Assembling record layout row allocation...");
 
-    // 5. Construct Full 20-Column Row (Must be exactly 20 elements)
-    const rowData = new Array(19).fill(""); // Initialize empty array of 20
+    let idFrontUrl = "", idBackUrl = "", selfieUrl = "";
 
-    rowData[0] = finalSlNo;                 // Col 1
-    rowData[1] = now;                       // Col 2
-    rowData[2] = data.idType || "";         // Col 3
-    rowData[3] = data.idNumber || "";       // Col 4
-    rowData[4] = data.name || "";           // Col 5
-    rowData[5] = data.whatsapp || "";       // Col 6
-    rowData[6] = data.purpose || "";        // Col 7
-    rowData[7] = data.city || "";           // Col 8
-    rowData[8] = data.emergencyName || "";  // Col 9
-    rowData[9] = data.emergencyPhone || ""; // Col 10
-    rowData[10] = idFrontUrl || "";         // Col 16
-    rowData[11] = idBackUrl || "";          // Col 17
-    rowData[12] = selfieUrl;                // Col 18
-    rowData[13] = checkInStatus;            // Col 19
-    rowData[14] = data.address || "";             // Col 20
+    try {
+      idFrontUrl = data.idFrontBase64 ? uploadToDrive(data.idFrontBase64, finalSlNo, data.idType, "Front") : "";
+      idBackUrl = data.idBackBase64 ? uploadToDrive(data.idBackBase64, finalSlNo, data.idType, "Back") : "";
+      selfieUrl = data.selfieBase64 ? uploadToDrive(data.selfieBase64, finalSlNo, "Selfie", "") : "";
+    } catch (uploadErr) {
+      console.error("Core file delivery pipeline execution crash:", uploadErr.toString());
+      throw new Error("Document storage engine failure: " + uploadErr.toString());
+    }
+
+    // Explicit array cell coordination
+    const rowData = new Array(20).fill("");
+    rowData[COL_SLNO - 1] = finalSlNo;
+    rowData[COL_TIMESTAMP - 1] = now;
+    rowData[COL_ID_TYPE - 1] = data.idType || "";
+    rowData[COL_ID_NUMBER - 1] = data.idNumber || "";
+    rowData[COL_NAME - 1] = data.name || "";
+    rowData[COL_WHATSAPP - 1] = cleanWhatsapp;
+    rowData[COL_PURPOSE - 1] = data.purpose || "";
+    rowData[COL_ARRIVING_CITY - 1] = data.city || "";
+    rowData[COL_EMERGENCY_NAME - 1] = data.emergencyName || "";
+    rowData[COL_EMERGENCY_PHONE - 1] = cleanEmergencyPhone;
+    rowData[COL_ID_FRONT - 1] = idFrontUrl;
+    rowData[COL_ID_BACK - 1] = idBackUrl;
+    rowData[COL_SELFIE - 1] = selfieUrl;
+    rowData[COL_STATUS - 1] = checkInStatus;
+    rowData[COL_ADDRESS - 1] = data.address || "";
 
     sheet.appendRow(rowData);
+    console.log("New registration row verified and pinned.");
   }
 
   return {
@@ -129,62 +152,10 @@ function processSubmission(data) {
 }
 
 /**
- * Helper: Uploads Base64 string to ImageKit
- */
-/**
- * Uploads a base64 image to ImageKit with overwrite permissions.
- * @param {string} base64Data - The full data URI (e.g. data:image/jpeg;base64,...)
- * @param {string} fileName - The desired name (Month_Year_SlNo_Type)
- * @return {string} The URL of the uploaded file
- */
-function uploadToImageKit(base64Data, fileName) {
-  // 1. Extract the raw base64 content
-  const base64Content = base64Data.split(',')[1];
-
-  // 2. Prepare the payload (similar to your JS FormData example)
-  // UrlFetchApp handles multipart/form-data automatically when the payload is an object
-  const payload = {
-    'file': base64Content,
-    'fileName': fileName,
-    'folder': IMAGEKIT_FOLDER, // Or your specific ImageKit path
-    'useUniqueFileName': "false",
-    'overwriteFile': "true" // Ensures that if you re-upload, it replaces the old one
-  };
-
-  const authHeader = "Basic " + Utilities.base64Encode(IMAGEKIT_PRIVATE_KEY + ":");
-
-  // 3. Configure the Request
-  // Note: IMAGEKIT_PRIVATE_KEY should be your private key. 
-  // ImageKit requires the colon ":" at the end for Basic Auth.
-  const options = {
-    'method': 'post',
-    'headers': {
-      'Authorization': authHeader,
-      'Accept': 'application/json'
-    },
-    'payload': payload,
-    'muteHttpExceptions': true
-  };
-
-  try {
-    const response = UrlFetchApp.fetch("https://upload.imagekit.io/api/v1/files/upload", options);
-    const result = JSON.parse(response.getContentText());
-
-    if (response.getResponseCode() !== 200) {
-      throw new Error("ImageKit Error: " + (result.message || response.getContentText()));
-    }
-
-    return result.url; // Returns the optimized CDN URL
-  } catch (err) {
-    console.error("Upload failed for " + fileName + ": " + err.toString());
-    throw err;
-  }
-}
-/**
  * Uses Google Cloud Vision API to extract text from image
  */
 function extractTextFromImage(base64Data) {
-  const API_KEY = 'AIzaSyBJu27q1YjARED4wFPCYV1h2AyZNRLygVo'; // Your key
+  const API_KEY = 'AIzaSyBJu27q1YjARED4wFPCYV1h2AyZNRLygVo';
   const url = `https://vision.googleapis.com/v1/images:annotate?key=${API_KEY}`;
 
   let base64Image = base64Data;
@@ -209,7 +180,6 @@ function extractTextFromImage(base64Data) {
   const response = UrlFetchApp.fetch(url, options);
   const result = JSON.parse(response.getContentText());
 
-  // DEBUG: Check the full response if it fails
   if (result.responses && result.responses[0].error) {
     throw new Error("Vision API Error: " + result.responses[0].error.message);
   }
@@ -311,7 +281,7 @@ function parseAadhaarData(rawText) {
 
           if (nextLine.length > 0 && nextLine.length < 15 && !nextIsNoise && !/\d/.test(nextLine) && !/S\/O|D\/O|W\/O/i.test(nextUpper) && !nextIsStructural) {
             potentialName += " " + nextLine;
-            i++; 
+            i++;
           }
         }
 
@@ -617,13 +587,11 @@ function parsePassportData(rawText) {
       }
     }
 
-
   }
 
   // --- FINAL ASSEMBLY ---
   let fullName = (givenName + " " + surname).trim();
 
-  // MRZ Fallback for Name
   if (!fullName || fullName.length < 5 || fullName.toUpperCase().includes("SURNAME")) {
     const mrzLine = lines.find(l => l.startsWith("P<") || l.includes("<<"));
     if (mrzLine) {
@@ -675,7 +643,7 @@ function executeOcrFlow(frontBase64, backBase64, idType) {
     const hasIdKeywords = idKeywords.some(keyword => upperText.includes(keyword));
 
     if (!hasIdKeywords) {
-      throw new Error("This doesn't look like a valid Government ID. Please upload clear photos of your original card.");
+      throw new Error("This doesn't look like a valid Government ID. Please upload clear photos.");
     }
 
     // 4. Routing to Parsers
@@ -692,7 +660,6 @@ function executeOcrFlow(frontBase64, backBase64, idType) {
       default:
         throw new Error("Unsupported ID type selected.");
     }
-
   } catch (e) {
     console.error("OCR Flow Error: " + e.message);
     throw new Error(e.message);
@@ -700,30 +667,33 @@ function executeOcrFlow(frontBase64, backBase64, idType) {
 }
 /**
  * Searches guest by mobile number
- * @param {string} mobile - The mobile number to search
  */
 function searchGuestByMobile(mobile) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME);
   const data = sheet.getDataRange().getValues();
 
-  // Mobile is in Column 6 (index 5)
-  const mobileColIndex = 5;
-  const searchMobile = String(mobile).replace(/[\s-+]/g, '');
+  // Dynamic assignment mapped straight to your global column rules
+  const mobileColIndex = COL_WHATSAPP - 1;
+  const searchMobile = String(mobile).replace(/[\s-+]/g, '').replace(/^91/, '');
 
   for (let i = 1; i < data.length; i++) {
     const existingMobile = String(data[i][mobileColIndex]).replace(/[\s-+]/g, '');
 
     if (existingMobile.endsWith(searchMobile) && searchMobile.length >= 10) {
+      // Use your exact constants minus 1 to translate safely to zero-indexed arrays
       return {
         exists: true,
         rowNumber: i + 1,
-        name: data[i][4],
-        idType: data[i][2],
-        idNumber: data[i][3],
-        emergencyName: data[i][8],
-        emergencyPhone: data[i][9],
-        city: data[i][7]
+        name: data[i][COL_NAME - 1] || "",
+        idType: data[i][COL_ID_TYPE - 1] || "Aadhaar",
+        idNumber: data[i][COL_ID_NUMBER - 1] || "",
+        whatsapp: data[i][COL_WHATSAPP - 1] || "",
+        purpose: data[i][COL_PURPOSE - 1] || "",
+        city: data[i][COL_ARRIVING_CITY - 1] || "",
+        emergencyName: data[i][COL_EMERGENCY_NAME - 1] || "",
+        emergencyPhone: data[i][COL_EMERGENCY_PHONE - 1] || "",
+        address: data[i][COL_ADDRESS - 1] || ""
       };
     }
   }
@@ -735,7 +705,7 @@ function searchGuestByMobile(mobile) {
  */
 function checkIdMobileAssociation(extractedId, currentMobile) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME); // Ensure this matches your Sheet Name
+  const sheet = ss.getSheetByName(SHEET_NAME);
   const data = sheet.getDataRange().getValues();
 
   // 1. Correct Column Indices (0-based) based on your Vinyasa Nilaya Ledger:
@@ -744,7 +714,6 @@ function checkIdMobileAssociation(extractedId, currentMobile) {
   const mobileColIndex = 5;
   const nameColIndex = 4;
 
-  // 2. Normalize input data
   const searchId = String(extractedId).replace(/[\s-]/g, '').toUpperCase();
   const searchMobile = String(currentMobile).replace(/[\s-+\d]{0,2}/, '').trim();
 
@@ -753,7 +722,6 @@ function checkIdMobileAssociation(extractedId, currentMobile) {
   // 3. CRITICAL: Skip if ID is redacted or empty
   // Without this, all guests with "[Aadhaar Redacted]" will conflict with each other.
   if (!searchId || searchId.includes("REDACTED") || searchId === "") {
-    console.log("Check Skipped: ID is redacted or empty.");
     return { conflict: false };
   }
 
@@ -763,19 +731,12 @@ function checkIdMobileAssociation(extractedId, currentMobile) {
 
     // 4. Match Logic
     if (existingId === searchId) {
-      console.log(`Match Found on Row ${i + 1}. Checking mobile compatibility...`);
-
-      // If ID matches but Mobile is different
       if (existingMobile !== searchMobile && searchMobile !== "") {
-        console.warn(`CONFLICT: ID ${searchId} belongs to ${data[i][nameColIndex]} (${existingMobile})`);
-
         return {
           conflict: true,
           existingName: data[i][nameColIndex],
           existingMobile: data[i][mobileColIndex]
         };
-      } else {
-        console.log("No conflict: ID and Mobile match existing record.");
       }
     }
   }
@@ -784,7 +745,9 @@ function checkIdMobileAssociation(extractedId, currentMobile) {
   return { conflict: false };
 }
 
-/***** Upload images to Google Drive ************/
+/**
+ * Uploads Base64 string to Google Drive Engine
+ */
 function uploadToDrive(base64Data, serialNo, idType, side) {
   try {
     // 1. Handle Parent Folder: Identity Proofs
@@ -811,7 +774,6 @@ function uploadToDrive(base64Data, serialNo, idType, side) {
     const existingFiles = targetFolder.getFilesByName(fileName);
     while (existingFiles.hasNext()) {
       const existingFile = existingFiles.next();
-
       if (idType === "Selfie") {
         // Delete the old selfie to make room for the new one
         console.log("Replacing existing selfie for repeating guest: " + fileName);

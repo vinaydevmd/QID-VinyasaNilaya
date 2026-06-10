@@ -1,197 +1,20 @@
 <script>
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  const photoPreview = document.getElementById('photo-preview');
-  const videoContainer = document.getElementById('video-container');
-  let selfieBase64 = null;
   let stream;
-
- // REMOVED: window.onload = startSelfieCamera;
-
-  async function initiateSelfieProcess() {
-    const video = document.getElementById('selfieStream');
-    const placeholder = document.getElementById('cameraPlaceholder');
-    const guide = document.getElementById('selfieGuide');
-    const overlay = document.getElementById('captureOverlay');
-    const status = document.getElementById('selfieStatus');
-    const container = document.getElementById('selfieContainer');
-
-    // Don't restart if already active or captured
-    if (!video.classList.contains('d-none') || !document.getElementById('selfieCanvas').classList.contains('d-none')) return;
-
-    status.innerText = "Accessing camera...";
-
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, 
-        audio: false 
-      });
-      
-      stream = mediaStream;
-      video.srcObject = mediaStream;
-      
-      // UI Transitions
-      placeholder.classList.add('d-none');
-      video.classList.remove('d-none');
-      guide.classList.remove('d-none');
-      overlay.classList.remove('d-none');
-      
-      status.innerHTML = '<span class="text-success fw-bold">● Live Feed Active</span>';
-      
-      // Remove the "click to start" listener once camera is live
-      container.onclick = null; 
-
-    } catch (err) {
-      console.warn("Live stream blocked or denied:", err);
-      // Silent Fallback to file input (worked for user before)
-      status.innerText = "Opening system camera...";
-      document.getElementById('selfieInput').click();
-    }
-  }
-
- function takeSnapshot() {
-    const video = document.getElementById('selfieStream');
-    const canvas = document.getElementById('selfieCanvas');
-    const guide = document.getElementById('selfieGuide');
-    const status = document.getElementById('selfieStatus');
-    const retakeBtn = document.getElementById('retakeBtn');
-
-    // Capture current frame
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Switch UI to "Preview" mode
-    canvas.classList.remove('d-none');
-    video.classList.add('d-none'); // Hide live video
-    guide.classList.add('d-none');
-    document.getElementById('captureOverlay').classList.add('d-none');
-    retakeBtn.classList.remove('d-none');
-    status.innerText = "Selfie captured ✓";
-
-    // Stop hardware
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-  }
-
-  function restartCamera() {
-    const placeholder = document.getElementById('cameraPlaceholder');
-    const status = document.getElementById('selfieStatus');
-    const canvas = document.getElementById('selfieCanvas');
-    const retakeBtn = document.getElementById('retakeBtn');
-    const guide = document.getElementById('selfieGuide');
-
-    // 1. Hide the captured photo canvas
-    canvas.classList.add('d-none');
-    
-    // 2. Hide the Retake button and Guide
-    retakeBtn.classList.add('d-none');
-    guide.classList.add('d-none');
-
-    // 3. Reset the placeholder to its original "Enable" state
-    placeholder.classList.remove('d-none');
-    placeholder.innerHTML = `
-      <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
-        <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
-      </div>
-      <span class="fw-bold">Tap to Enable Camera</span>
-      <small class="text-muted">Front camera will be used for verification</small>
-    `;
-
-    // 4. Update status and re-enable the click listener
-    status.innerText = "Camera ready";
-    document.getElementById('selfieContainer').onclick = initiateSelfieProcess;
-  }
-
-  function handleFallbackSelfie(input) {
-    const file = input.files[0];
-    const status = document.getElementById('selfieStatus');
-    const preview = document.getElementById('cameraPlaceholder'); // Use the placeholder div for preview
-    const retakeBtn = document.getElementById('retakeBtn');
-
-    if (file) {
-      status.innerText = "Processing image...";
-      
-      const reader = new FileReader();
-      
-      reader.onload = function(e) {
-        // 1. Hide the icons and text inside the placeholder
-        preview.innerHTML = ""; 
-        
-        // 2. Create and append a clean image element
-        const img = document.createElement('img');
-        img.src = e.target.result;
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectFit = "cover";
-        img.className = "rounded-4";
-        
-        preview.appendChild(img);
-        
-        // 3. Update UI states
-        status.innerHTML = '<span class="text-success fw-bold">Selfie captured ✓</span>';
-        if (retakeBtn) retakeBtn.classList.remove('d-none');
-        
-        // Ensure the guide is hidden
-        const guide = document.getElementById('selfieGuide');
-        if (guide) guide.classList.add('d-none');
-      };
-
-      reader.onerror = function() {
-        status.innerText = "Error loading image. Please try again.";
-      };
-
-      reader.readAsDataURL(file);
-    }
-  }
-
-  // Function to show the permission modal
-  function showPermissionError() {
-    const modalLib = window.bootstrap || bootstrap;
-    if (typeof modalLib !== 'undefined') {
-      const pModal = new modalLib.Modal(document.getElementById('permissionModal'));
-      pModal.show();
-    } else {
-      alert("Camera Access Denied: Please check your browser's site settings (click the lock icon in the URL bar).");
-    }
-  }
-
- /*Handle preview */
-  function handlePreview(input, previewId) {
-    const container = document.getElementById(previewId);
-    const file = input.files[0];
-    
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      // We wrap the image and text in a relative div to keep them contained
-      container.innerHTML = `
-        <div style="position: relative; width: 100%; height: 100%;">
-          <img src="${e.target.result}" class="preview-image">
-          <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.8); padding: 5px 0; z-index: 10;">
-            <p class="small text-success m-0 fw-bold">Image Loaded ✓</p>
-          </div>
-        </div>`;
-    };
-    
-    reader.onerror = function() {
-      showPermissionError();
-    };
-
-    reader.readAsDataURL(file);
-  }
+  
+  // High-efficiency cache container to hold downscaled Base64 assets for backend processing
+  let compressedIdAssets = {
+    frontPreview: null,
+    backPreview: null
+  };
 
   /**
-   * Dynamically updates ID options based on Nationality radio selection
+   * Phase 1: Dynamically updates ID options based on Nationality radio selection
    */
   function updateIdOptions() {
     const isIndian = document.getElementById('natIndian').checked;
     const idSelect = document.getElementById('idType');
+    if (!idSelect) return;
     
-    // Clear existing options
     idSelect.innerHTML = '';
 
     if (isIndian) {
@@ -204,267 +27,140 @@
         idSelect.options.add(new Option(opt.text, opt.val));
       });
     } else {
-      // Foreign Guests: Restricted to Passport only
       idSelect.options.add(new Option('Passport', 'Passport'));
-    }
-    
-    // Optional: Reset scanner UI if you have different guides for different IDs
-    if (typeof updateScannerUI === "function") updateScannerUI();
-  }
-
-    /**
-     * Ensure the logic runs when the page loads so the default state (Indian) is set
-     */
-    document.addEventListener('DOMContentLoaded', function() {
-      updateIdOptions();
-  });
-
-/* Handle AI ID Scans*/
-  async function handleIdScan() {
-    const frontFile = document.getElementById('idFront').files[0];
-    const backFile = document.getElementById('idBack').files[0]; // Fetch the back side
-    const currentMobile = document.getElementById('searchMobile').value;
-    
-    const nationality = document.querySelector('input[name="nationality"]:checked').value;
-    const idType = document.getElementById('idType').value;
-    
-    if (!frontFile) return showNotification("Upload Required", "Please upload the Front side of your ID.", "warning");
-    if (!currentMobile) return showNotification("Mobile Required", "Mobile number is required for verification.", "warning");
-
-    const btn = document.getElementById('scanBtn');
-    const spinner = document.getElementById('scanSpinner');
-    
-    // Enter Scanning State
-    btn.disabled = true;
-    if (spinner) spinner.classList.remove('d-none');
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing ' + idType + '...';
-
-    // Helper function to convert file to Base64
-    const toBase64 = file => new Promise((resolve, reject) => {
-      if (!file) resolve(null);
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
-    });
-
-    try {
-      // 1. Read both images simultaneously
-      const [frontBase64, backBase64] = await Promise.all([
-        toBase64(frontFile),
-        toBase64(backFile)
-      ]);
-
-      // 2. Execute Unified Flow (Passing BOTH images)
-      google.script.run
-        .withSuccessHandler(function(res) {
-
-         console.log("Checking database - ID: " + res.idNumber + " | Mobile: " + currentMobile + " | Address: " + res.address);
-          
-          // Security Cross-Check
-          google.script.run
-            .withSuccessHandler(function(checkRes) {
-              if (checkRes.conflict) {
-                btn.disabled = false;
-                btn.innerHTML = 'Start AI Identity Scan';
-                btn.className = "btn btn-primary w-100 py-3 fw-bold";
-                
-                document.getElementById('name').value = "";
-                document.getElementById('idNumber').value = "";
-                document.getElementById('address').value = "";
-                
-                showNotification(
-                  "Security Alert", 
-                  `This ID is already associated with "${checkRes.existingName}".`, 
-                  "error"
-                );
-                resetImageUploads();
-                return;
-              }
-
-              console.log("No conflict");
-
-              // SUCCESS: Populate UI
-              document.getElementById('ocrConfirmation').classList.remove('d-none');
-              document.getElementById('name').value = (res.name !== "Not found") ? res.name : "";
-              
-              // Privacy Redaction for Aadhaar handled on display
-              const isAadhaar = idType === "Aadhaar";
-              document.getElementById('idNumber').value = res.idNumber;
-
-              document.getElementById('address').value = res.address;
-
-              if (spinner) spinner.classList.add('d-none');
-              btn.disabled = false;
-              btn.innerHTML = 'Scan Complete ✓';
-              btn.className = "btn btn-success w-100 mb-4 shadow-sm";
-              
-              validateFormState();
-            })
-            .checkIdMobileAssociation(res.idNumber, currentMobile); 
-        })
-        .withFailureHandler(function(err) {
-          btn.disabled = false;
-          if (spinner) spinner.classList.add('d-none');
-          btn.innerHTML = 'Start AI Identity Scan';
-          resetImageUploads();
-          showNotification("Scan Failed", "We couldn't read your " + idType + ". Please try clearer photos of both sides.", "error");
-        })
-        .executeOcrFlow(frontBase64, backBase64, idType, nationality);
-
-    } catch (error) {
-      btn.disabled = false;
-      showNotification("Upload Error", "There was an error reading the files. Please try again.", "error");
-    }
-  }
-
-  // Function to clear everything
-  function resetImageUploads() {
-    // Clear inputs
-    document.getElementById('idFront').value = "";
-    document.getElementById('idBack').value = "";
-    const sBtn = document.getElementById('searchBtn');
-    //const sInput = document.getElementById('searchMobile');
-
-    sBtn.disabled = false;
-    sBtn.innerHTML = 'Search';
-    //sInput.readOnly = false;
-    //sInput.value = "";
-    
-    // Reset Front Preview Tile
-    document.getElementById('frontPreview').innerHTML = `
-      <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
-      <span class="d-block fw-semibold">Front Side</span>
-      <small class="text-muted">Tap to try again</small>
-    `;
-    
-    // Reset Back Preview Tile
-    document.getElementById('backPreview').innerHTML = `
-      <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
-      <span class="d-block fw-semibold">Back Side</span>
-      <small class="text-muted">Tap to try again</small>
-    `;
-  }
-
-  // Function to trigger the professional popup
-  function showCustomError(message) {
-    const modalText = document.getElementById('errorModalMessage');
-    const modalElement = document.getElementById('errorModal');
-    
-    if (modalText) modalText.innerText = message;
-
-    // Ensure bootstrap is available globally
-    const bootstrapLib = window.bootstrap || bootstrap;
-
-    if (typeof bootstrapLib !== 'undefined') {
-      try {
-        const myModal = new bootstrapLib.Modal(modalElement);
-        myModal.show();
-      } catch (e) {
-        console.error("Modal initialization failed:", e);
-        alert(message); 
-      }
-    } else {
-      // Fallback if the CDN failed or is still loading
-      console.warn("Bootstrap JS not found, using fallback alert.");
-      alert("Scan Error: " + message);
     }
   }
 
   /**
-   * Final Submission to Google Sheets/Drive
+   * Run on DOM Load initialization
    */
-  async function finalSubmit() {
-    const overlay = document.getElementById('loadingOverlay');
-    const submitBtn = document.getElementById('submitBtn');
+  document.addEventListener('DOMContentLoaded', function() {
+    updateIdOptions();
+    // Force the master structural nodes into an initialized hidden state
+    toggleSecondarySections(false);
+  });
 
-    const isUpdate = document.getElementById('isExistingGuest').value === "true";
-    const rowNumber = document.getElementById('rowNumber').value;
-
-    // 1. Show Progress
-    overlay.classList.remove('d-none');
-    submitBtn.disabled = true;
-
-    //2. Take front and back ID's
-    const frontFile = document.getElementById('idFront').files[0];
-    const backFile = document.getElementById('idBack').files[0]; // Fetch the back side
-
- 
-    // 3. Handle Selfie Data (Check Canvas first, then File Input)
-    let selfieBase64 = "";
-    const canvas = document.getElementById('selfieCanvas');
-    const selfieInput = document.getElementById('selfieInput');
-
-    if (!canvas.classList.contains('d-none')) {
-      selfieBase64 = canvas.toDataURL('image/jpeg');
-    } else if (selfieInput.files.length > 0) {
-      selfieBase64 = await toBase64(selfieInput.files[0]);
-    } else {
-      throw new Error("Please take a selfie for identity verification.");
+  /**
+   * Core Image Interceptor, Processing, & Compression Pipeline
+   */
+  async function handlePreview(inputElement, previewContainerId) {
+    const container = document.getElementById(previewContainerId);
+    const file = inputElement.files[0];
+    
+    if (!file) {
+      evaluateUploadStatus();
+      return;
     }
+    
+    container.innerHTML = `
+      <div class="d-flex flex-column align-items-center justify-content-center h-100 py-3">
+        <div class="spinner-border spinner-border-sm text-primary mb-1" role="status"></div>
+        <span class="small text-muted fw-semibold">Processing...</span>
+      </div>`;
 
-    // 4. Prepare Data Object
-    const formData = {
-      isUpdate: isUpdate,
-      rowNumber: rowNumber,
-      name: document.getElementById('name').value,
-      idType: document.getElementById('idType').value,
-      idNumber: document.getElementById('idNumber').value,
-      whatsapp: document.getElementById('whatsapp').value,
-      purpose: document.getElementById('purpose').value,
-      city: document.getElementById('city').value,
-      emergencyName: document.getElementById('emergencyName').value,
-      emergencyPhone: document.getElementById('emergencyPhone').value,
-      // Capture ID Proofs only if they were just scanned (new guest)
-      // Convert ID Proofs only if new files were selected
-      idFrontBase64: frontFile ? await toBase64(frontFile) : null, 
-      idBackBase64: backFile ? await toBase64(backFile) : null,
-      selfieBase64: selfieBase64,
-      address:document.getElementById('address').value
-    };
+    try {
+      const compressedBase64 = await compressIdImage(file, 1200, 0.85);
+      compressedIdAssets[previewContainerId] = compressedBase64;
 
-    // 5. Send to Google Apps Script
-    google.script.run
-      .withSuccessHandler(function(res) {
-        overlay.classList.add('d-none');
-        if (res.success) {
-          showNotification(
-            "Check-in Successful", 
-            `Registration Complete!. ${res.status}`, 
-            "success"
-          );
-          // Optional: Redirect or reload after 3 seconds
-          setTimeout(() => {
-            resetRegistrationForm();
-            // 5. Reset Selfi section
-            resetSelfieSection();
-          }, 2500);
-          
-        }
-      })
-      .withFailureHandler(function(err) {
-        overlay.classList.add('d-none');
-        submitBtn.disabled = false;
-        showNotification("Submission Error", err.message, "error");
-      })
-      .processSubmission(formData);
+      container.innerHTML = `
+        <div style="position: relative; width: 100%; height: 100%;">
+          <img src="${compressedBase64}" class="preview-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+          <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.85); padding: 5px 0; z-index: 10;">
+            <p class="small text-success m-0 fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Image Loaded ✓</p>
+          </div>
+        </div>`;
+
+      evaluateUploadStatus();
+
+    } catch (error) {
+      console.error("Downscale compression operational fault:", error);
+      container.innerHTML = `
+        <div class="text-center text-danger py-3">
+          <i class="bi bi-exclamation-octagon-fill h3"></i>
+          <span class="d-block small fw-bold">Compression Error</span>
+        </div>`;
+      showNotification("Image Processing Error", "Failed to compress selected ID document image. Please try again.", "error");
+    }
   }
 
-  // Helper function to convert files to Base64
-  function toBase64(file) {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-      });
-    }
+  function compressIdImage(file, maxBoundary, quality) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = function(event) {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = function() {
+          let width = img.width;
+          let height = img.height;
 
-  /* Function to handle mobile search*/
+          if (width > height) {
+            if (width > maxBoundary) {
+              height *= maxBoundary / width;
+              width = maxBoundary;
+            }
+          } else {
+            if (height > maxBoundary) {
+              width *= maxBoundary / height;
+              height = maxBoundary;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const base64Result = canvas.toDataURL('image/jpeg', quality);
+          resolve(base64Result);
+        };
+        img.onerror = err => reject(err);
+      };
+      reader.onerror = err => reject(err);
+    });
+  }
+
+  function evaluateUploadStatus() {
+    const frontInput = document.getElementById('idFront');
+    const backInput = document.getElementById('idBack');
+    const scanBtn = document.getElementById('scanBtn');
+    const btnText = document.getElementById('scanBtnText');
+
+    if (!scanBtn || !btnText) return;
+
+    const frontFile = frontInput && frontInput.files ? frontInput.files[0] : null;
+    const backFile = backInput && backInput.files ? backInput.files[0] : null;
+
+    if (frontFile && backFile) {
+      scanBtn.disabled = false;
+      scanBtn.style.opacity = "1";
+      btnText.innerText = "Verify & Scan Document Now";
+    } else {
+      scanBtn.disabled = true;
+      scanBtn.style.opacity = "0.5";
+      btnText.innerText = "Upload Both Sides First";
+    }
+  }
+
+  function cleanMobileNumber(rawNumber) {
+    if (rawNumber === undefined || rawNumber === null) return "";
+    let numStr = String(rawNumber).trim();
+    numStr = numStr.replace(/[\s-+]/g, '');
+    if (numStr.startsWith('91') && numStr.length > 10) {
+      numStr = numStr.substring(2);
+    }
+    return numStr;
+  }
+
+  /**
+   * Function to handle mobile search pipeline
+   */
   function handleMobileSearch() {
-    const searchMobile = document.getElementById('searchMobile').value;
+    const rawMobile = document.getElementById('searchMobile').value;
+    const searchMobile = cleanMobileNumber(rawMobile);
     const searchBtn = document.getElementById('searchBtn');
-    const whatsappField = document.getElementById('whatsapp'); // Ensure this ID exists in Section 3
+    const whatsappField = document.getElementById('whatsapp');
 
     if (searchMobile.length < 10) {
       showNotification(
@@ -475,17 +171,13 @@
       return;
     }
 
-    // --- 1. ENTER SEARCHING STATE ---
     searchBtn.disabled = true;
-    // Using a small spinner for a professional look
     searchBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Searching...';
 
-    // 1. Immediately set WhatsApp field to search value
-    whatsappField.value = searchMobile;
+    if (whatsappField) whatsappField.value = searchMobile;
 
     google.script.run
       .withSuccessHandler(function(guest) {
-
         const sInput = document.getElementById('searchMobile');
         const sBtn = document.getElementById('searchBtn');
         const idUploadSection = document.getElementById('idUploadSection');
@@ -493,98 +185,597 @@
         const welcomeMsg = document.getElementById('welcomeMsg');
 
         if (guest.exists) {
-
-          // --- 2. SEARCH SUCCESSFUL ---
-          // Restore text but keep it disabled to lock the session
-          searchBtn.innerHTML = 'Search';
+          sBtn.innerHTML = 'Search';
           sBtn.disabled = true; 
-          sInput.readOnly = true;
+          if (sInput) sInput.readOnly = true;
 
-          // 1. Set the hidden trackers
           document.getElementById('isExistingGuest').value = "true";
           document.getElementById('rowNumber').value = guest.rowNumber;
 
-          // RETURNING GUEST
-          idUploadSection.classList.add('d-none'); // Hide scanning
-          ocrConfirmation.classList.remove('d-none');
-          welcomeMsg.classList.remove('d-none');
+          if (idUploadSection) idUploadSection.classList.add('d-none');
+          if (ocrConfirmation) ocrConfirmation.classList.remove('d-none');
+          if (welcomeMsg) welcomeMsg.classList.remove('d-none');
           
-          document.getElementById('name').value = guest.name;
-          document.getElementById('idType').value = guest.idType;
-          document.getElementById('idNumber').value = guest.idNumber;
-          document.getElementById('emergencyName').value = guest.emergencyName;
-          document.getElementById('emergencyPhone').value = guest.emergencyPhone;
-          document.getElementById('city').value = guest.city;
+          document.getElementById('name').value = guest.name || "";
+          document.getElementById('idType').value = guest.idType || "Aadhaar";
+          document.getElementById('idNumber').value = guest.idNumber || "";
+          document.getElementById('emergencyName').value = guest.emergencyName || "";
+          document.getElementById('emergencyPhone').value = cleanMobileNumber(guest.emergencyPhone || "");
+          document.getElementById('city').value = guest.city || "";
           
-          console.log("Found guest at row: " + guest.rowNumber);
+          if (document.getElementById('address') && guest.address) {
+            document.getElementById('address').value = guest.address;
+          }
+
+          // Force fresh explicit check verification for returning workflow
+          const verifiedCheckbox = document.getElementById('detailsVerified');
+          if (verifiedCheckbox) verifiedCheckbox.checked = false;
 
         } else {
-          // --- 3. SEARCH FAILED (New Guest) ---
-
-          // Reset trackers for a new guest
           document.getElementById('isExistingGuest').value = "false";
           document.getElementById('rowNumber').value = "";
 
-          // Re-enable so they can fix the number if it was a typo
-          sBtn.disabled = false;
-          sBtn.innerHTML = 'Search';
+          if (sBtn) {
+            sBtn.disabled = false;
+            sBtn.innerHTML = 'Search';
+          }
 
-          // NEW GUEST
-          idUploadSection.classList.remove('d-none'); // Show scanning
-          ocrConfirmation.classList.add('d-none');
-          welcomeMsg.classList.add('d-none');
-          // New way
-          showNotification(
-            "New Guest", 
-            "Mobile number not found in our records. Please proceed with the ID Scan to register.", 
-            "info"
-          );
+          if (idUploadSection) idUploadSection.classList.remove('d-none');
+          if (ocrConfirmation) ocrConfirmation.classList.add('d-none');
+          if (welcomeMsg) welcomeMsg.classList.add('d-none');
         }
 
-        showVerificationSection();
+        if (typeof showVerificationSection === "function") {
+          showVerificationSection();
+        }
+        
+        validateFormState();
       })
       .withFailureHandler(function(err) {
-        // --- 4. ERROR STATE ---
-        sBtn.disabled = false;
-        sBtn.innerHTML = 'Search';
+        const sBtn = document.getElementById('searchBtn');
+        if (sBtn) {
+          sBtn.disabled = false;
+          sBtn.innerHTML = 'Search';
+        }
         showNotification("Error", "System search failed. Please try again.", "error");
       })
       .searchGuestByMobile(searchMobile);
   }
 
-  // Add this logic where you display the verification/summary section
-  function showVerificationSection() {
-    const isUpdate = document.getElementById('isExistingGuest').value === "true";
+  /**
+   * CRITICAL ACTION HANDLER: Bypasses sections for existing records
+   */
+  function handleIdentityConfirmation() {
+    const isExisting = document.getElementById('isExistingGuest').value === "true";
+    const verifiedCheckbox = document.getElementById('detailsVerified');
+    
+    if (verifiedCheckbox) {
+      verifiedCheckbox.checked = true;
+    }
 
-    // 3. Handle the Professional Note visibility
-    const note = document.getElementById('verificationNote');
-    if (isUpdate) {
-      note.classList.add('d-none'); // Hide for returning guests
+    if (isExisting) {
+      // 1. Reveal hidden downstream layouts instantly
+      const secEmergency = document.getElementById('sec_emergency');
+      const secTravel = document.getElementById('sec_travel');
+      const secSelfie = document.getElementById('sec_selfie');
+      const secTerms = document.getElementById('sec_terms');
+      const submitContainer = document.getElementById('submitContainer');
+
+      if (secEmergency) secEmergency.classList.remove('d-none');
+      if (secTravel) secTravel.classList.remove('d-none');
+      if (secSelfie) secSelfie.classList.remove('d-none');
+      if (secTerms) secTerms.classList.remove('d-none');
+      if (submitContainer) submitContainer.classList.remove('d-none');
+
+      // 2. Snap UI display window straight down to camera section
+      if (secSelfie) {
+        setTimeout(() => {
+          secSelfie.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
+
+      // 3. Trigger hardware video streams instantly
+      initiateSelfieProcess();
+
     } else {
-      note.classList.remove('d-none'); // Show for new guest scanning ID
+      // Step-by-step incremental layout engine fallback logic for fresh check-ins
+      toggleSecondarySections(true);
+    }
+
+    validateFormState();
+  }
+
+  /* Handle OCR Engine Scans */
+  async function handleIdScan() {
+    const frontFile = document.getElementById('idFront').files[0];
+    const backFile = document.getElementById('idBack').files[0];
+    const currentMobile = cleanMobileNumber(document.getElementById('searchMobile').value);
+    
+    const nationality = document.querySelector('input[name="nationality"]:checked').value;
+    const idType = document.getElementById('idType').value;
+    
+    if (!frontFile || !backFile) return showNotification("Upload Required", "Please upload both Front and Back side images of your ID card.", "warning");
+    if (!currentMobile) return showNotification("Mobile Required", "Mobile number is required for registration matching.", "warning");
+
+    const btn = document.getElementById('scanBtn');
+    const spinner = document.getElementById('scanSpinner');
+    const btnText = document.getElementById('scanBtnText');
+    
+    if (btn) btn.disabled = true;
+    if (spinner) spinner.classList.remove('d-none');
+    if (btnText) btnText.innerText = 'Analyzing ' + idType ;
+
+    try {
+      google.script.run
+        .withSuccessHandler(function(res) {
+          google.script.run
+            .withSuccessHandler(function(checkRes) {
+              if (checkRes.conflict) {
+                if (btn) {
+                  btn.disabled = false;
+                  btn.className = "btn btn-primary w-100 py-3 fw-bold";
+                  if (btnText) btnText.innerText = 'Verify & Scan Document Now';
+                }
+                
+                document.getElementById('name').value = "";
+                document.getElementById('idNumber').value = "";
+                document.getElementById('address').value = "";
+                
+                showNotification(
+                  "Security Alert", 
+                  `This identification document is already recorded on another guest profile under the name "${checkRes.existingName}".`, 
+                  "error"
+                );
+                
+                resetImageUploads();
+                return;
+              }
+
+              const ocrConfirmEl = document.getElementById('ocrConfirmation');
+              if (ocrConfirmEl) ocrConfirmEl.classList.remove('d-none');
+              
+              document.getElementById('name').value = (res.name !== "Not found") ? res.name : "";
+              document.getElementById('idNumber').value = res.idNumber || "";
+              document.getElementById('address').value = res.address || "";
+
+              if (spinner) spinner.classList.add('d-none');
+              if (btn) {
+                btn.disabled = false;
+                btn.className = "btn btn-success w-100 mb-4 shadow-sm text-white";
+                if (btnText) btnText.innerText = 'Scan Complete ✓';
+              }
+              
+              validateFormState();
+              
+              setTimeout(() => {
+                const ocrConfirmView = document.getElementById('ocrConfirmation');
+                if (ocrConfirmView) ocrConfirmView.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 200);
+            })
+            .checkIdMobileAssociation(res.idNumber, currentMobile); 
+        })
+        .withFailureHandler(function(err) {
+          if (btn) {
+            btn.disabled = false;
+            btn.className = "btn w-100 py-3 fw-bold btn-primary";
+            if (btnText) btnText.innerText = 'Verify & Scan Document Now';
+          }
+          if (spinner) spinner.classList.add('d-none');
+          resetImageUploads();
+          showNotification("Scan Failed", "We couldn't extract distinct characters from your " + idType + ". Please attempt using crisp, bright photos.", "error");
+        })
+        .executeOcrFlow(compressedIdAssets.frontPreview, compressedIdAssets.backPreview, idType, nationality);
+
+    } catch (error) {
+      if (btn) {
+        btn.disabled = false;
+        if (btnText) btnText.innerText = 'Verify & Scan Document Now';
+      }
+      if (spinner) spinner.classList.add('d-none');
+      showNotification("Upload Error", "There was an error reading localized document structures.", "error");
     }
   }
 
   /**
-   * Triggers a custom modal instead of an alert
-   * @param {string} title - Modal Title
-   * @param {string} message - The message body
-   * @param {string} type - 'success', 'warning', or 'error'
+   * Progressive Node Visibility Controller
    */
+  function toggleSecondarySections(isVerified) {
+    const secEmergency = document.getElementById('sec_emergency');
+    const checkedState = document.getElementById('detailsVerified').checked;
+    const isExisting = document.getElementById('isExistingGuest').value === "true";
+
+    // If it's an existing guest, keep everything open; don't collapse sections.
+    if (isExisting) {
+      if (secEmergency) secEmergency.classList.remove('d-none');
+      document.getElementById('sec_travel')?.classList.remove('d-none');
+      document.getElementById('sec_selfie')?.classList.remove('d-none');
+      document.getElementById('sec_terms')?.classList.remove('d-none');
+      document.getElementById('submitContainer')?.classList.remove('d-none');
+      return; 
+    }
+
+    if (isVerified && checkedState) {
+      if (secEmergency) {
+        secEmergency.classList.remove('d-none');
+        setTimeout(() => {
+          secEmergency.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
+    } else {
+      if (secEmergency) secEmergency.classList.add('d-none');
+      document.getElementById('sec_travel')?.classList.add('d-none');
+      document.getElementById('sec_selfie')?.classList.add('d-none');
+      document.getElementById('sec_terms')?.classList.add('d-none');
+      document.getElementById('submitContainer')?.classList.add('d-none');
+    }
+    validateFormState();
+  }
+
+  function checkEmergencyCompletion() {
+    const isExisting = document.getElementById('isExistingGuest').value === "true";
+    const secTravel = document.getElementById('sec_travel');
+    
+    // Ensure existing guests retain downstream fields
+    if (isExisting) {
+      if (secTravel) secTravel.classList.remove('d-none');
+      return;
+    }
+    
+    const nameVal = document.getElementById('emergencyName').value.trim();
+    const phoneVal = document.getElementById('emergencyPhone').value.trim();
+
+    if (nameVal.length > 2 && phoneVal.length >= 10) {
+      if (secTravel && secTravel.classList.contains('d-none')) {
+        secTravel.classList.remove('d-none');
+        setTimeout(() => {
+          secTravel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
+    }
+    validateFormState();
+  }
+
+  function checkTravelCompletion() {
+    const isExisting = document.getElementById('isExistingGuest').value === "true";
+    const secSelfie = document.getElementById('sec_selfie');
+    const secTerms = document.getElementById('sec_terms');
+    const submitContainer = document.getElementById('submitContainer');
+
+    // Ensure existing guests retain final fields
+    if (isExisting) {
+      if (secSelfie) secSelfie.classList.remove('d-none');
+      if (secTerms) secTerms.classList.remove('d-none');
+      if (submitContainer) submitContainer.classList.remove('d-none');
+      return;
+    }
+    
+    const cityVal = document.getElementById('city').value.trim();
+    const purposeVal = document.getElementById('purpose').value;
+
+    if (cityVal.length > 1 && purposeVal !== "") {
+      if (secSelfie && secSelfie.classList.contains('d-none')) {
+        secSelfie.classList.remove('d-none');
+        secTerms.classList.remove('d-none');
+        submitContainer.classList.remove('d-none');
+        setTimeout(() => {
+          secSelfie.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+      }
+    }
+    validateFormState();
+  }
+
+  /**
+   * Phase 4: Dynamic Matrix System Validator
+   */
+  function validateFormState() {
+    const submitBtn = document.getElementById('submitBtn');
+    const warningMsg = document.getElementById('submitWarningMessage');
+    if (!submitBtn) return;
+    
+    const isExisting = document.getElementById('isExistingGuest').value === "true";
+    const hasName = document.getElementById('name').value.trim() !== "";
+    const hasId = document.getElementById('idNumber').value.trim() !== "";
+    const idVerified = document.getElementById('detailsVerified').checked;
+    
+    const purposeSelect = document.getElementById('purpose');
+    const hasPurpose = purposeSelect && purposeSelect.value !== "";
+    const hasCity = document.getElementById('city').value.trim() !== "";
+
+    const emergencyName = document.getElementById('emergencyName').value.trim() !== "";
+    const emergencyPhone = document.getElementById('emergencyPhone').value.trim().length >= 10;
+
+    const selfieCanvas = document.getElementById('selfieCanvas');
+    const selfieInput = document.getElementById('selfieInput');
+    let hasSelfie = false;
+    
+    if (selfieCanvas && selfieCanvas.width > 0) {
+      const selfieData = selfieCanvas.toDataURL();
+      const blankCanvas = document.createElement('canvas');
+      blankCanvas.width = selfieCanvas.width;
+      blankCanvas.height = selfieCanvas.height;
+      hasSelfie = (selfieData !== blankCanvas.toDataURL());
+    }
+    
+    if (!hasSelfie && selfieInput && selfieInput.files && selfieInput.files.length > 0) {
+      hasSelfie = true;
+    }
+
+    const termsAccepted = document.getElementById('termsAccepted').checked;
+
+    let isFormValid = false;
+    if (isExisting) {
+      // Express confirmation route rules out secondary input field evaluations
+      isFormValid = hasName && hasId && idVerified && hasSelfie && termsAccepted;
+    } else {
+      isFormValid = hasName && hasId && idVerified && emergencyName && emergencyPhone && hasCity && hasPurpose && hasSelfie && termsAccepted;
+    }
+
+    if (isFormValid) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-50');
+      if (warningMsg) warningMsg.classList.add('d-none');
+    } else {
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-50');
+      
+      if (warningMsg) {
+        warningMsg.classList.remove('d-none');
+        if (!idVerified) {
+          warningMsg.innerHTML = '<i class="bi bi-person-check-fill me-2"></i>Please verify identity details.';
+        } else if (!isExisting && (!emergencyName || !emergencyPhone)) {
+          warningMsg.innerHTML = '<i class="bi bi-telephone-plus-fill me-2"></i>Emergency details required.';
+        } else if (!isExisting && (!hasCity || !hasPurpose)) {
+          warningMsg.innerHTML = '<i class="bi bi-airplane-fill me-2"></i>Travel tracking info missing.';
+        } else if (!hasSelfie) {
+          warningMsg.innerHTML = '<i class="bi bi-camera-fill me-2"></i>Verification selfie is missing.';
+        } else if (!termsAccepted) {
+          warningMsg.innerHTML = '<i class="bi bi-exclamation-triangle-fill me-2"></i>Please accept House Rules.';
+        } else {
+          warningMsg.innerHTML = '<i class="bi bi-info-circle-fill me-2"></i>Complete all sections to unlock button.';
+        }
+      }
+    }
+  }
+
+  // Intercept data modification changes dynamically across the document environment 
+  document.addEventListener('change', function(e) {
+    if (e.target.id === 'emergencyName' || e.target.id === 'emergencyPhone') checkEmergencyCompletion();
+    if (e.target.id === 'city' || e.target.id === 'purpose') checkTravelCompletion();
+    validateFormState();
+  });
+  
+  document.addEventListener('input', function(e) {
+    if (e.target.id === 'emergencyName' || e.target.id === 'emergencyPhone') checkEmergencyCompletion();
+    if (e.target.id === 'city' || e.target.id === 'purpose') checkTravelCompletion();
+    validateFormState();
+  });
+
+  /**
+   * Camera and Live Video Selfie Processing Routines
+   */
+  async function initiateSelfieProcess() {
+    const video = document.getElementById('selfieStream');
+    const placeholder = document.getElementById('cameraPlaceholder');
+    const guide = document.getElementById('selfieGuide');
+    const overlay = document.getElementById('captureOverlay');
+    const status = document.getElementById('selfieStatus');
+    const container = document.getElementById('selfieContainer');
+    const canvas = document.getElementById('selfieCanvas');
+
+    if (!video || !video.classList.contains('d-none') || (canvas && !canvas.classList.contains('d-none'))) return;
+
+    status.innerText = "Accessing camera system devices...";
+
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "user" }, 
+        audio: false 
+      });
+      
+      stream = mediaStream;
+      video.srcObject = mediaStream;
+      
+      placeholder.classList.add('d-none');
+      video.classList.remove('d-none');
+      if (guide) guide.classList.remove('d-none');
+      if (overlay) overlay.classList.remove('d-none');
+      
+      status.innerHTML = '<span class="text-success fw-bold">● Live Feed Active</span>';
+      if (container) container.onclick = null; 
+
+    } catch (err) {
+      console.warn("Hardware media streaming blocked or device missing:", err);
+      status.innerText = "Opening native system camera fallback capture...";
+      const fallbackInput = document.getElementById('selfieInput');
+      if (fallbackInput) fallbackInput.click();
+    }
+  }
+
+  function takeSnapshot() {
+    const video = document.getElementById('selfieStream');
+    const canvas = document.getElementById('selfieCanvas');
+    const guide = document.getElementById('selfieGuide');
+    const status = document.getElementById('selfieStatus');
+    const retakeBtn = document.getElementById('retakeBtn');
+    const overlay = document.getElementById('captureOverlay');
+
+    if (!video || video.videoWidth === 0) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.classList.remove('d-none');
+    video.classList.add('d-none'); 
+    if (guide) guide.classList.add('d-none');
+    if (overlay) overlay.classList.add('d-none');
+    if (retakeBtn) retakeBtn.classList.remove('d-none');
+    
+    status.innerText = "Selfie captured successfully ✓";
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    
+    validateFormState();
+  }
+
+  function restartCamera() {
+    const placeholder = document.getElementById('cameraPlaceholder');
+    const status = document.getElementById('selfieStatus');
+    const canvas = document.getElementById('selfieCanvas');
+    const retakeBtn = document.getElementById('retakeBtn');
+    const guide = document.getElementById('selfieGuide');
+    const video = document.getElementById('selfieStream');
+    const selfieInput = document.getElementById('selfieInput');
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+
+    if (canvas) {
+      canvas.classList.add('d-none');
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    
+    if (selfieInput) selfieInput.value = "";
+    if (video) video.classList.add('d-none');
+    if (retakeBtn) retakeBtn.classList.add('d-none');
+    if (guide) guide.classList.add('d-none');
+
+    if (placeholder) {
+      placeholder.classList.remove('d-none');
+      placeholder.innerHTML = `
+        <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
+          <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
+        </div>
+        <span class="fw-bold">Tap to Take Verification Selfie</span>
+      `;
+    }
+
+    status.innerText = "Camera ready";
+    
+    const container = document.getElementById('selfieContainer');
+    if (container) container.onclick = initiateSelfieProcess;
+    
+    validateFormState();
+  }
+
+  function handleFallbackSelfie(input) {
+    const file = input.files[0];
+    const status = document.getElementById('selfieStatus');
+    const preview = document.getElementById('cameraPlaceholder'); 
+    const retakeBtn = document.getElementById('retakeBtn');
+    const canvas = document.getElementById('selfieCanvas');
+
+    if (file) {
+      status.innerText = "Processing image...";
+      
+      if (canvas) {
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas.classList.add('d-none');
+      }
+
+      const reader = new FileReader();
+      
+      reader.onload = function(e) {
+        if (preview) {
+          preview.innerHTML = ""; 
+          
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          img.style.width = "100%";
+          img.style.height = "100%";
+          img.style.objectFit = "cover";
+          img.className = "rounded-4";
+          
+          preview.appendChild(img);
+        }
+        
+        status.innerHTML = '<span class="text-success fw-bold">Selfie captured ✓</span>';
+        if (retakeBtn) retakeBtn.classList.remove('d-none');
+        
+        const guide = document.getElementById('selfieGuide');
+        if (guide) guide.classList.add('d-none');
+        
+        validateFormState();
+      };
+
+      // FIX: Corrected variable routing error boundary handle logic
+      reader.onerror = function() {
+        status.innerText = "Error loading image. Please try again.";
+      };
+
+      reader.readAsDataURL(file);
+    }
+  }
+
+  function resetImageUploads() {
+    const frontInput = document.getElementById('idFront');
+    const backInput = document.getElementById('idBack');
+    if (frontInput) frontInput.value = "";
+    if (backInput) backInput.value = "";
+    
+    compressedIdAssets.frontPreview = null;
+    compressedIdAssets.backPreview = null;
+
+    const spinner = document.getElementById('scanSpinner');
+    if (spinner) spinner.classList.add('d-none');
+
+    const sBtn = document.getElementById('searchBtn');
+    if (sBtn) {
+      sBtn.disabled = false;
+      sBtn.className = "btn btn-primary fw-bold";
+      sBtn.innerHTML = 'Search';
+    }
+    
+    const frontPrev = document.getElementById('frontPreview');
+    if (frontPrev) {
+      frontPrev.innerHTML = `
+        <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+        <span class="d-block fw-semibold">Front Side</span>`;
+    }
+
+    const backPrev = document.getElementById('backPreview');
+    if (backPrev) {
+      backPrev.innerHTML = `
+        <i class="bi bi-camera-fill h2 mb-1 text-primary"></i>
+        <span class="d-block fw-semibold">Back Side</span>`;
+    }
+
+    evaluateUploadStatus();
+  }
+
+  function showVerificationSection() {
+    const isUpdate = document.getElementById('isExistingGuest').value === "true";
+    const note = document.getElementById('verificationNote');
+    if (note) {
+      if (isUpdate) note.classList.add('d-none');
+      else note.classList.remove('d-none');
+    }
+  }
+
   function showNotification(title, message, type = 'info') {
     const modalElement = document.getElementById('notificationModal');
-    const modal = new bootstrap.Modal(modalElement);
+    if (!modalElement) return;
     
+    const modal = new bootstrap.Modal(modalElement);
     const titleEl = document.getElementById('modalTitle');
     const msgEl = document.getElementById('modalMessage');
     const iconBox = document.getElementById('modalIconContainer');
     const btn = document.getElementById('modalActionBtn');
 
-    // Set Content
     titleEl.innerText = title;
     msgEl.innerText = message;
 
-    // Set Style based on type
     let iconHtml = '';
     btn.className = "btn w-100 rounded-pill py-2 fw-bold ";
 
@@ -601,10 +792,9 @@
 
     iconBox.innerHTML = iconHtml;
 
-    // Add this right before modal.show();
     modalElement.addEventListener('hidden.bs.modal', function () {
       if (type === 'warning') {
-        document.getElementById('searchMobile').focus();
+        document.getElementById('searchMobile')?.focus();
       }
     }, { once: true });
     
@@ -612,182 +802,159 @@
   }
 
   function resetRegistrationForm() {
-    console.log("Starting full reset...");
-
     const sInput = document.getElementById('searchMobile');
     const sBtn = document.getElementById('searchBtn');
 
-    // Restore back to original 
-    searchBtn.innerHTML = 'Search';
-    sBtn.disabled = false; 
-    sInput.readOnly = false;
-
-    
-    // 1. Clear all Input fields inside the registration div
-    const container = document.getElementById('registrationForm');
-    const inputs = container.querySelectorAll('input, select');
-    inputs.forEach(input => {
-      if (input.type === 'checkbox' || input.type === 'radio') {
-        // Keep Indian Guest as default for Vinyasa Nilaya
-        if (input.id === 'natIndian') {
-          input.checked = true;
-          // Trigger the change logic so the ID dropdown updates its options
-          updateIdOptions();
-
-          // 2. Force ID Type to Aadhaar
-          // We use a small timeout to ensure updateIdOptions() has finished 
-          // populating the list before we try to select Aadhaar
-          setTimeout(() => {
-            const idTypeSelect = document.getElementById('idType');
-            if (idTypeSelect) {
-              idTypeSelect.value = "Aadhaar"; 
-            }
-          }, 50);
-
-        }
-        else input.checked = false;
-      } else {
-        input.value = '';
-      }
-    });
-
-    // 2. Clear Hidden Trackers
-    document.getElementById('isExistingGuest').value = "false";
-    document.getElementById('rowNumber').value = "";
-
-    // 3. Reset UI Sections
-    document.getElementById('idUploadSection').classList.add('d-none');
-    document.getElementById('ocrConfirmation').classList.add('d-none');
-    document.getElementById('welcomeMsg').classList.add('d-none');
-    document.getElementById('verificationNote').classList.remove('d-none'); // Show note for next new guest
-    
-    // 4. Reset Previews (ID images)
-    document.getElementById('frontPreview').innerHTML = '<i class="bi bi-camera-fill h2 mb-1 text-primary"></i><span class="d-block fw-semibold">Front Side</span>';
-    document.getElementById('backPreview').innerHTML = '<i class="bi bi-camera-fill h2 mb-1 text-primary"></i><span class="d-block fw-semibold">Back Side</span>';
-
-    //5. Reset ScanAI images fields
-     const btn = document.getElementById('scanBtn');
-     btn.disabled = false;
-     btn.innerHTML = 'Start AI Identity Scan';
-     btn.className = "btn btn-primary w-100 py-3 fw-bold";
-     resetImageUploads();
-
-    // 6. Reset Submit Button
-    const submitBtn = document.getElementById('submitBtn');
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = 'Complete Check-in';
-      
-      // Ensure it uses btn-success for the green color, 
-      // but keep .disabled or [disabled] for the faded effect.
-      submitBtn.classList.remove('btn-primary', 'btn-secondary');
-      submitBtn.classList.add('btn-success'); 
-      
-      // If your CSS uses opacity for disabled states, it will look like the faded green.
+    if (sBtn) {
+      sBtn.innerHTML = 'Search';
+      sBtn.disabled = false;
+      sBtn.className = "btn btn-primary fw-bold";
+    }
+    if (sInput) {
+      sInput.readOnly = false;
+      sInput.value = '';
     }
 
-    // 7. UI Polish
+    const container = document.getElementById('registrationForm');
+    if (container) {
+      const inputs = container.querySelectorAll('input, select');
+      inputs.forEach(input => {
+        if (input.type === 'checkbox' || input.type === 'radio') {
+          if (input.id === 'natIndian') {
+            input.checked = true;
+            updateIdOptions();
+          } else {
+            input.checked = false;
+          }
+        } else {
+          // FIX: Intercept the ID type dropdown to prevent it from resetting to empty
+          if (input.id === 'idType') {
+            input.value = 'Aadhaar';
+          } else {
+            input.value = '';
+          }
+        }
+      });
+    }
+
+    document.getElementById('isExistingGuest').value = "false";
+    document.getElementById('rowNumber').value = "";
+    document.getElementById('idUploadSection')?.classList.add('d-none');
+    document.getElementById('ocrConfirmation')?.classList.add('d-none');
+    document.getElementById('welcomeMsg')?.classList.add('d-none');
+    
+    resetImageUploads();
+    toggleSecondarySections(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    console.log("Vinyasa Nilaya portal ready for next guest.");
   }
 
-
   function resetSelfieSection() {
-    console.log("Forcing a hard reset of the selfie tile...");
-
-    // 1. Kill the camera hardware immediately
-    if (typeof stream !== 'undefined' && stream) {
+    if (stream) {
       stream.getTracks().forEach(track => track.stop());
       stream = null;
     }
-
-    // 2. TARGET THE CONTAINER
-    const container = document.getElementById('selfieContainer');
-    
-    // 3. WIPE AND RE-INJECT ORIGINAL HTML
-    // This physically deletes the old canvas/image and puts back a fresh tile
-    container.innerHTML = `
-      <div id="cameraPlaceholder" class="w-100 h-100 d-flex flex-column align-items-center justify-content-center bg-light border">
-        <div class="rounded-circle bg-primary bg-opacity-10 p-4 mb-3">
-          <i class="bi bi-camera-fill h1 text-primary mb-0"></i>
-        </div>
-        <span class="fw-bold">Tap to Take Verification Selfie</span>
-      </div>
-      <video id="selfieStream" autoplay playsinline muted class="d-none w-100 h-100" style="object-fit: cover; transform: scaleX(-1);"></video>
-      <div id="selfieGuide" class="d-none position-absolute top-50 start-50 translate-middle border border-success border-4 rounded-circle" style="width: 180px; height: 180px; opacity: 0.7; z-index: 10; pointer-events: none;"></div>
-      <div id="captureOverlay" class="d-none position-absolute bottom-0 start-0 w-100 p-3 text-center" style="z-index: 11;">
-        <button type="button" class="btn btn-light rounded-circle shadow-lg p-3" onclick="event.stopPropagation(); takeSnapshot();"><i class="bi bi-camera-fill h4 mb-0"></i></button>
-      </div>
-      <canvas id="selfieCanvas" class="d-none w-100 h-100 position-absolute top-0 start-0" style="object-fit: cover; z-index: 12; transform: scaleX(-1);"></canvas>
-    `;
-
-    // 4. Reset External Controls
-    document.getElementById('retakeBtn').classList.add('d-none');
-    document.getElementById('selfieStatus').innerText = "Camera ready";
-    document.getElementById('selfieInput').value = "";
-
-    // Inside resetSelfieSection...
-    const canvas = document.getElementById('selfieCanvas');
-    if (canvas) {
-        canvas.width = 0;  // Setting width to 0 makes toDataURL() return "data:," (null/empty)
-        canvas.height = 0;
-    }
-
-    
-    console.log("Selfie tile physically rebuilt.");
+    restartCamera();
+    const selfieInput = document.getElementById('selfieInput');
+    if (selfieInput) selfieInput.value = "";
   }
 
   /**
-   * Monitors form state to enable/disable the submit button
+   * Final Submission Process Pipe
    */
-  function validateFormState() {
+  async function finalSubmit() {
     const submitBtn = document.getElementById('submitBtn');
-    
-    // 1. Check Personal/ID Data
-    const hasName = document.getElementById('name').value.trim() !== "";
-    const hasId = document.getElementById('idNumber').value.trim() !== "";
-    const idVerified = document.getElementById('detailsVerified').checked;
-    
-    // 2. Check Purpose of Travel (New)
-    const purposeSelect = document.getElementById('purpose');
-    const hasPurpose = purposeSelect && purposeSelect.value !== "";
+    const isUpdate = document.getElementById('isExistingGuest').value === "true";
+    const rowNumber = document.getElementById('rowNumber').value;
 
-    
-    // 3. Check Selfie 
-    const selfieCanvas = document.getElementById('selfieCanvas');
-    const selfieData = selfieCanvas.toDataURL();
-
-    // Create a temporary blank canvas of the same size to compare
-    const blankCanvas = document.createElement('canvas');
-    blankCanvas.width = selfieCanvas.width;
-    blankCanvas.height = selfieCanvas.height;
-    const blankData = blankCanvas.toDataURL();
-
-    // hasSelfie is true only if the current canvas is DIFFERENT from a blank one
-    // OR if a file was manually uploaded
-    const hasSelfie = (selfieData !== blankData) || (document.getElementById('selfieInput').files.length > 0);
-
-
-    // 3. Check Terms & Consent
-    const termsAccepted = document.getElementById('termsAccepted').checked;
-    const infoConfirmed = document.getElementById('detailsVerified').checked; // Using your Column 6 check
-
-    // Master Toggle
-    if (hasName && hasId && idVerified && hasSelfie && termsAccepted && infoConfirmed && hasPurpose) {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('opacity-50');
-    } else {
+    if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.classList.add('opacity-50');
+      submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Processing Check-in...`;
+    }
+
+    let selfieBase64Data = "";
+    const canvas = document.getElementById('selfieCanvas');
+    const selfieInput = document.getElementById('selfieInput');
+
+    const localPackBase64 = file => new Promise((resolve, reject) => {
+      if (!file) resolve(null);
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
+
+    try {
+      if (canvas && canvas.width > 0) {
+        selfieBase64Data = canvas.toDataURL('image/jpeg', 0.85);
+      } else if (selfieInput && selfieInput.files && selfieInput.files.length > 0) {
+        console.log("Canvas empty. Extracting data base64 directly from uploaded file element source instead...");
+        selfieBase64Data = await localPackBase64(selfieInput.files[0]);
+      }
+
+      if (!selfieBase64Data) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = "Complete Check-in";
+        }
+        return showNotification("Missing Photo", "Please take or upload a confirmation profile image to continue.", "warning");
+      }
+
+      const formData = {
+        isUpdate: isUpdate,
+        rowNumber: rowNumber,
+        name: document.getElementById('name')?.value || "",
+        idType: document.getElementById('idType')?.value || "",
+        idNumber: document.getElementById('idNumber')?.value || "",
+        whatsapp: cleanMobileNumber(document.getElementById('whatsapp')?.value || ""),
+        purpose: document.getElementById('purpose')?.value || "",
+        city: document.getElementById('city')?.value || "",
+        emergencyName: document.getElementById('emergencyName')?.value || "",
+        emergencyPhone: cleanMobileNumber(document.getElementById('emergencyPhone')?.value || ""),
+        idFrontBase64: compressedIdAssets.frontPreview || null, 
+        idBackBase64: compressedIdAssets.backPreview || null,
+        selfieBase64: selfieBase64Data,
+        address: document.getElementById('address')?.value || ""
+      };
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            showNotification("Check-in Successful", `Registration Complete!`, "success");
+            if (submitBtn) submitBtn.innerHTML = "✓ Check-in Complete";
+
+            setTimeout(() => {
+              resetRegistrationForm();
+              resetSelfieSection();
+            }, 2500);
+          } else {
+            showNotification("Processing Issue", (res.error || "Unknown server database context error execution state"), "error");
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.innerHTML = "Complete Check-in";
+            }
+          }
+        })
+        .withFailureHandler(function(err) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = "Complete Check-in";
+          }
+          showNotification("Submission Error", (err.message || 'Server ecosystem breakdown context tracking error handle'), "error");
+        })
+        .processSubmission(formData);
+
+    } catch (payloadError) {
+      console.error("Local processing error:", payloadError);
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = "Complete Check-in";
+      }
+      showNotification("Local Data Error", "Unable to correctly process image stream data assets.", "error");
     }
   }
 
-  // Add event listeners to all triggers
-  document.addEventListener('change', validateFormState);
-  document.addEventListener('input', validateFormState);
-
-  // Initialize button as disabled on load
-  window.onload = () => { document.getElementById('submitBtn').disabled = true; };
-
-
+  // Alias to bridge the gap between old inline HTML event attributes and the new layout function
+  function validateFormCompletion() {
+    validateFormState();
+  }
 </script>
