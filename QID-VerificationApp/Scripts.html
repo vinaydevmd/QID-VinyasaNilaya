@@ -63,12 +63,14 @@
       compressedIdAssets[previewContainerId] = compressedBase64;
 
       container.innerHTML = `
-        <div style="position: relative; width: 100%; height: 100%;">
-          <img src="${compressedBase64}" class="preview-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
-          <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.85); padding: 5px 0; z-index: 10;">
-            <p class="small text-success m-0 fw-bold"><i class="bi bi-check-circle-fill me-1"></i>Image Loaded ✓</p>
-          </div>
-        </div>`;
+      <div style="position: relative; width: 100%; height: 100%;">
+        <img src="${compressedBase64}" class="preview-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+        <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.85); padding: 5px 0; z-index: 10;">
+          <p class="small text-success m-0 fw-bold text-center">
+            <i class="bi bi-check-circle-fill me-1"></i>ID Photo Ready ✓
+          </p>
+        </div>
+      </div>`;
 
       evaluateUploadStatus();
 
@@ -245,7 +247,7 @@
   /**
    * CRITICAL ACTION HANDLER: Bypasses sections for existing records
    */
-  function handleIdentityConfirmation() {
+function handleIdentityConfirmation() {
     const isExisting = document.getElementById('isExistingGuest').value === "true";
     const verifiedCheckbox = document.getElementById('detailsVerified');
     
@@ -254,7 +256,7 @@
     }
 
     if (isExisting) {
-      // 1. Reveal hidden downstream layouts instantly
+      // 1. Reveal hidden downstream layouts instantly so prefilled data is accessible
       const secEmergency = document.getElementById('sec_emergency');
       const secTravel = document.getElementById('sec_travel');
       const secSelfie = document.getElementById('sec_selfie');
@@ -267,14 +269,32 @@
       if (secTerms) secTerms.classList.remove('d-none');
       if (submitContainer) submitContainer.classList.remove('d-none');
 
-      // 2. Snap UI display window straight down to camera section
-      if (secSelfie) {
+      // 2. Validate Travel Details presence before choosing the scroll target
+      const cityVal = document.getElementById('city')?.value.trim() || "";
+      const purposeSelect = document.getElementById('purpose');
+      const purposeVal = purposeSelect ? purposeSelect.value : "";
+
+      // If travel data is missing, halt the express scroll at the Travel section
+      if (cityVal.length <= 1 || purposeVal === "") {
         setTimeout(() => {
-          secSelfie.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          if (secTravel) {
+            secTravel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
         }, 100);
+        
+        // Refresh validation styles to highlight the empty inputs
+        validateFormState();
+        return; 
       }
 
-      // 3. Trigger hardware video streams instantly
+      // 3. Clear to proceed route: Snap UI display window straight down to camera section
+      setTimeout(() => {
+        if (secSelfie) {
+          secSelfie.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+
+      // 4. Trigger hardware video streams instantly
       initiateSelfieProcess();
 
     } else {
@@ -375,8 +395,7 @@
       showNotification("Upload Error", "There was an error reading localized document structures.", "error");
     }
   }
-
-  /**
+/**
    * Progressive Node Visibility Controller
    */
   function toggleSecondarySections(isVerified) {
@@ -384,13 +403,24 @@
     const checkedState = document.getElementById('detailsVerified').checked;
     const isExisting = document.getElementById('isExistingGuest').value === "true";
 
-    // If it's an existing guest, keep everything open; don't collapse sections.
     if (isExisting) {
+      // Keep primary downstream panels visible for existing accounts
       if (secEmergency) secEmergency.classList.remove('d-none');
       document.getElementById('sec_travel')?.classList.remove('d-none');
-      document.getElementById('sec_selfie')?.classList.remove('d-none');
-      document.getElementById('sec_terms')?.classList.remove('d-none');
-      document.getElementById('submitContainer')?.classList.remove('d-none');
+      
+      // Gate section 4 (selfie) based on whether travel details are completed
+      const cityVal = document.getElementById('city')?.value.trim() || "";
+      const purposeVal = document.getElementById('purpose')?.value || "";
+      
+      if (cityVal.length > 1 && purposeVal !== "") {
+        document.getElementById('sec_selfie')?.classList.remove('d-none');
+        document.getElementById('sec_terms')?.classList.remove('d-none');
+        document.getElementById('submitContainer')?.classList.remove('d-none');
+      } else {
+        document.getElementById('sec_selfie')?.classList.add('d-none');
+        document.getElementById('sec_terms')?.classList.add('d-none');
+        document.getElementById('submitContainer')?.classList.add('d-none');
+      }
       return; 
     }
 
@@ -415,7 +445,6 @@
     const isExisting = document.getElementById('isExistingGuest').value === "true";
     const secTravel = document.getElementById('sec_travel');
     
-    // Ensure existing guests retain downstream fields
     if (isExisting) {
       if (secTravel) secTravel.classList.remove('d-none');
       return;
@@ -437,30 +466,29 @@
 
   function checkTravelCompletion() {
     const isExisting = document.getElementById('isExistingGuest').value === "true";
+    const cityVal = document.getElementById('city').value.trim();
+    const purposeVal = document.getElementById('purpose').value;
     const secSelfie = document.getElementById('sec_selfie');
     const secTerms = document.getElementById('sec_terms');
     const submitContainer = document.getElementById('submitContainer');
-
-    // Ensure existing guests retain final fields
-    if (isExisting) {
-      if (secSelfie) secSelfie.classList.remove('d-none');
-      if (secTerms) secTerms.classList.remove('d-none');
-      if (submitContainer) submitContainer.classList.remove('d-none');
-      return;
-    }
-    
-    const cityVal = document.getElementById('city').value.trim();
-    const purposeVal = document.getElementById('purpose').value;
 
     if (cityVal.length > 1 && purposeVal !== "") {
       if (secSelfie && secSelfie.classList.contains('d-none')) {
         secSelfie.classList.remove('d-none');
         secTerms.classList.remove('d-none');
         submitContainer.classList.remove('d-none');
+        
         setTimeout(() => {
           secSelfie.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 150);
+        
+        // REMOVED: initiateSelfieProcess() automatic call to prevent unintended camera/file popups
       }
+    } else {
+      // If data is deleted/cleared, hide downstream dependencies immediately
+      secSelfie?.classList.add('d-none');
+      secTerms?.classList.add('d-none');
+      submitContainer?.classList.add('d-none');
     }
     validateFormState();
   }
@@ -505,8 +533,8 @@
 
     let isFormValid = false;
     if (isExisting) {
-      // Express confirmation route rules out secondary input field evaluations
-      isFormValid = hasName && hasId && idVerified && hasSelfie && termsAccepted;
+      // FIX: Added explicit hasPurpose and hasCity checks to protect existing guest route submission
+      isFormValid = hasName && hasId && idVerified && hasPurpose && hasCity && hasSelfie && termsAccepted;
     } else {
       isFormValid = hasName && hasId && idVerified && emergencyName && emergencyPhone && hasCity && hasPurpose && hasSelfie && termsAccepted;
     }
@@ -523,6 +551,9 @@
         warningMsg.classList.remove('d-none');
         if (!idVerified) {
           warningMsg.innerHTML = '<i class="bi bi-person-check-fill me-2"></i>Please verify identity details.';
+        } else if (isExisting && (!hasCity || !hasPurpose)) {
+          // Warning state specifically targeting unselected elements for existing user check-ins
+          warningMsg.innerHTML = '<i class="bi bi-airplane-fill me-2"></i>Travel tracking info missing.';
         } else if (!isExisting && (!emergencyName || !emergencyPhone)) {
           warningMsg.innerHTML = '<i class="bi bi-telephone-plus-fill me-2"></i>Emergency details required.';
         } else if (!isExisting && (!hasCity || !hasPurpose)) {
