@@ -171,7 +171,7 @@ function handleFilterChange() {
   /**
    * UI loading toggle helper function to animate icons smoothly
    */
-   function toggleRefreshLoadingState(isLoading) {
+  function toggleRefreshLoadingState(isLoading) {
     const icon = document.getElementById('refresh-icon');
     const spinner = document.getElementById('refresh-spinner');
     const btn = document.getElementById('refresh-dashboard-btn');
@@ -831,27 +831,98 @@ function handleFormSubmit(e) {
 // =========================================================================
 // QID DATASTORE & CORE CONTROLLER LOGIC
 // =========================================================================
-let globalQidDataStore = []; 
+// =========================================================================
+// GLOBAL APPLICATION STATE REGISTRIES & CONFIGURATIONS
+// =========================================================================
+let globalQidDataStore = [];      // Master server payload backup for identity mappings
+let activeSelectedSlNos = [];     // State-retaining memory tracking for multi-selection
 
+/**
+ * Access safe modal initialization instances cleanly avoiding dual-backdrop leaks
+ */
 function getQidModalInstance() {
     return bootstrap.Modal.getOrCreateInstance(document.getElementById('qidHubModal'));
 }
 
+// =========================================================================
+// QID CONTROL MODULES: VAULT INTERFACES, LIVE FILTERING & CHECKBOX ARRAYS
+// =========================================================================
+
 /**
  * Open the Hub Modal and pull fresh row maps from the backend database
  */
+/**
+ * Open the Hub Modal, dynamically fetch Drive year configurations, 
+ * populate the year select field, and retrieve secure registry listings.
+ */
 function openQidHubModal() {
+    // 1. Clear out any sticky backdrop overlays from previous sessions
+    const orphanedBackdrops = document.querySelectorAll('.modal-backdrop');
+    orphanedBackdrops.forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    
+    // 2. Display the structural modal workspace framework container instantly
     getQidModalInstance().show();
+    
     document.getElementById('qidUserFeed').innerHTML = 
         '<div class="col-12 text-center py-5">' +
             '<div class="spinner-border text-success spinner-border-sm me-2" role="status"></div>' +
             '<span class="text-muted small">Accessing Secure ID Vault...</span>' +
         '</div>';
-    
+        
+    // 3. DYNAMIC LIFECYCLE FORK: Query dynamic year folders from Google Drive
+    console.log(">>> [UI LIFE] Querying Drive storage mapping allocations for dynamic years...");
+    google.script.run
+        .withSuccessHandler(function(config) {
+            const yearDropdown = document.getElementById('qidFilterYear');
+            if (yearDropdown) {
+                // Clear existing dynamic elements but leave "All Years" intact
+                yearDropdown.innerHTML = '<option value="">All Years</option>';
+                
+                // Inject option definitions dynamically from real Drive folder profiles
+                config.years.forEach(year => {
+                    const option = document.createElement('option');
+                    option.value = year;
+                    option.innerText = year;
+                    
+                    // Mark match default active flag on current calendar configuration rules
+                    if (year === config.activeYear) {
+                        option.selected = true;
+                    }
+                    yearDropdown.appendChild(option);
+                });
+                console.log(`>>> [UI COMPLETE] Dynamic Year Combobox populated with: [${config.years.join(', ')}].`);
+            }
+            
+            // 4. Proceed to fetch main user list rows once years are ready
+            fetchMasterQidDataMatrix();
+        })
+        .withFailureHandler(function(err) {
+            console.error(">>> [UI LIFECYCLE FAULT] Years inventory step bypassed due to error: ", err.message);
+            // Fallback strategy: Populate current calendar year as safety baseline and pass context
+            const yearDropdown = document.getElementById('qidFilterYear');
+            if (yearDropdown && yearDropdown.options.length <= 1) {
+                const fallbackYear = new Date().getFullYear().toString();
+                const option = document.createElement('option');
+                option.value = fallbackYear;
+                option.innerText = fallbackYear;
+                option.selected = true;
+                yearDropdown.appendChild(option);
+            }
+            fetchMasterQidDataMatrix();
+        })
+        .getDynamicQidYearsConfig(); // Runs Drive App lookup execution thread upstream
+}
+
+/**
+ * Isolated method handler to fetch raw QID record feeds from spreadsheet database
+ */
+function fetchMasterQidDataMatrix() {
     google.script.run
         .withSuccessHandler(function(records) {
             globalQidDataStore = records || [];
-            renderQidFeed(globalQidDataStore);
+            activeSelectedSlNos = []; // Soft clear previous session selection vectors
+            filterQidRecords(); // Renders grid cards with local persistent filters applied
         })
         .withFailureHandler(function(err) {
             document.getElementById('qidUserFeed').innerHTML = 
@@ -860,12 +931,63 @@ function openQidHubModal() {
         .fetchQidVerifiedRegistry();
 }
 
+
+/**
+ * FEATURE 1 ENGINE: Memory-retaining, search-resilient viewport reduction pipeline
+ */
+function filterQidRecords() {
+    console.log(">>> [FILTER PIPELINE] Re-evaluating dynamic search criteria fields...");
+    
+    const query = document.getElementById('qidSearchInput').value.toLowerCase().trim();
+    
+    // Direct checks to accommodate optional elements safely
+    const yearEl = document.getElementById('qidFilterYear');
+    const monthEl = document.getElementById('qidFilterMonth');
+    const targetYear = yearEl ? yearEl.value : "";
+    const targetMonth = monthEl ? monthEl.value : "";
+    
+    const filteredRecords = globalQidDataStore.filter((row) => {
+        // 1. Text Search Input Field Matching
+        const matchesText = !query || 
+                            (row.name || "").toLowerCase().includes(query) || 
+                            (row.phone || "").includes(query) || 
+                            (row.arrivingCity || "").toLowerCase().includes(query);
+                            
+        // 2. Timeline Metadata Array Evaluation
+        if (!row.timestamp) {
+            return matchesText && !targetYear && !targetMonth;
+        }
+        
+        const dateObj = new Date(row.timestamp);
+        const rowYear = dateObj.getFullYear().toString();
+        const rowMonth = dateObj.toLocaleString('en-US', { month: 'long' });
+        
+        const matchesYear = !targetYear || rowYear === targetYear;
+        const matchesMonth = !targetMonth || rowMonth === targetMonth;
+        
+        return matchesText && matchesYear && matchesMonth;
+    });
+    
+    console.log(`>>> [FILTER PIPELINE] View matches isolated: [${filteredRecords.length}] records found.`);
+    
+    // Dispatch calculations down to card UI engine
+    renderQidFeed(filteredRecords);
+    
+    // Keep header synchronization controls aligned with viewport state mutations
+    syncMasterCheckboxState();
+}
+
+
 /**
  * Render Data Grid UI Cards optimized for Desktop Grid and Mobile Stacking
  */
 function renderQidFeed(records) {
     const feed = document.getElementById('qidUserFeed');
-    document.getElementById('qidCountLabel').innerText = records.length + " Profiles Verified Securely";
+    
+    const labelEl = document.getElementById('qidCountLabel');
+    if (labelEl) {
+        labelEl.innerText = records.length + " Profiles Verified Securely";
+    }
     
     if (records.length === 0) {
         feed.innerHTML = '<div class="col-12 text-center py-5 text-muted small">No verified identity mappings discovered.</div>';
@@ -875,34 +997,27 @@ function renderQidFeed(records) {
     let html = '';
     
     records.forEach(function(user) {
-        // Build document links cleanly using string concatenation to avoid backtick nesting collisions
-        // --- UPGRADED STRUCTURAL FIX: Attach safe in-app dynamic modal launcher scripts ---
-        let frontUrlHtml = '';
-        if (user.frontUrl) {
-            frontUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.frontUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Front</button>`;
-        }
+        let frontUrlHtml = user.frontUrl ? `<button type="button" onclick="launchSecureQidPreview('${user.frontUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Front</button>` : '';
+        let backUrlHtml = user.backUrl ? `<button type="button" onclick="launchSecureQidPreview('${user.backUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Back</button>` : '';
+        let selfieUrlHtml = user.selfieUrl ? `<button type="button" onclick="launchSecureQidPreview('${user.selfieUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-person-bounding-box me-1 text-success"></i> Selfie</button>` : '';
 
-        let backUrlHtml = '';
-        if (user.backUrl) {
-            backUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.backUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-file-earmark-image me-1 text-primary"></i> ID Back</button>`;
-        }
-
-        let selfieUrlHtml = '';
-        if (user.selfieUrl) {
-            selfieUrlHtml = `<button type="button" onclick="launchSecureQidPreview('${user.selfieUrl}')" class="btn btn-sm btn-light border d-flex align-items-center py-1 px-2 text-dark" style="border-radius:6px; font-size:11px;"><i class="bi bi-person-bounding-box me-1 text-success"></i> Selfie</button>`;
-        }
-
-        // Pre-compute text variations and styles
         const searchText = (user.name + ' ' + user.phone + ' ' + (user.arrivingCity || '')).toLowerCase();
         const initialLetter = user.idType ? user.idType.charAt(0) : 'ID';
         const badgeClass = user.checkinStatus === 'Checked In' ? 'bg-success' : 'bg-secondary';
         const safeNameEscaped = (user.name || '').replace(/'/g, "\\'");
 
-        // Main structural blueprint template layout
+        // Rebind checked states matching the active selected cache
+        const isChecked = activeSelectedSlNos.includes(String(user.slNo)) ? 'checked' : '';
+
         html += `
         <div class="col-12 col-md-6 qid-user-card" data-search="${searchText}">
             <div class="card h-100 border-0 shadow-sm p-3 position-relative bg-white" style="border-radius: 12px;">
                 
+                <div class="position-absolute" style="top: 15px; left: 14px; z-index: 10;">
+                    <input type="checkbox" class="form-check-input qid-row-checkbox shadow-none cursor-pointer border-secondary-subtle" 
+                           data-slno="${user.slNo}" ${isChecked} style="width: 17px; height: 17px;" onchange="handleSingleCheckboxChange(this)">
+                </div>
+
                 <div class="position-absolute top-0 end-0 mt-2 me-2" style="z-index: 10;">
                     <button type="button" class="btn btn-link btn-sm p-1 text-muted me-1" onclick="actionModifyQidUser(${user.slNo})" title="Modify Record">
                         <i class="bi bi-pencil fs-6 text-secondary"></i>
@@ -912,7 +1027,7 @@ function renderQidFeed(records) {
                     </button>
                 </div>
 
-                <div class="d-flex align-items-start mb-2" style="padding-right: 50px;">
+                <div class="d-flex align-items-start mb-2 ps-4" style="padding-right: 50px;">
                     <div class="badge bg-success-subtle text-success rounded-circle p-2 me-2 mt-1 d-flex align-items-center justify-content-center" style="font-size: 11px; width:24px; height:24px; font-weight: 600;">
                         ${initialLetter}
                     </div>
@@ -922,7 +1037,7 @@ function renderQidFeed(records) {
                     </div>
                 </div>
 
-                <div id="qidDetails_${user.slNo}">
+                <div id="qidDetails_${user.slNo}" class="ps-4">
                     <div class="row g-2 pt-2 border-top my-1 text-muted" style="font-size: 11.5px;">
                         <div class="col-6"><strong>ID Details:</strong> <span class="text-dark">${user.idType || 'Govt'} (${user.idNo || '-'})</span></div>
                         <div class="col-6"><strong>Origin City:</strong> <span class="text-dark">${user.arrivingCity || '-'}</span></div>
@@ -937,7 +1052,7 @@ function renderQidFeed(records) {
                     </div>
                 </div>
 
-                <div class="d-flex flex-wrap gap-2 pt-2 mt-2 border-top justify-content-start">
+                <div class="d-flex flex-wrap gap-2 pt-2 mt-2 border-top justify-content-start ps-4">
                     ${frontUrlHtml}
                     ${backUrlHtml}
                     ${selfieUrlHtml}
@@ -947,20 +1062,110 @@ function renderQidFeed(records) {
     });
     
     feed.innerHTML = html;
+    evaluateQidSelectionState();
 }
 
 /**
- * Instant In-Memory Search Engine Filtering
+ * Handle state data alterations for single card checkbox interaction elements
  */
-function filterQidRecords() {
-    const term = document.getElementById('qidSearchInput').value.toLowerCase().trim();
-    const cards = document.querySelectorAll('.qid-user-card');
-    
-    cards.forEach(function(card) {
-        const searchPool = card.getAttribute('data-search') || '';
-        card.style.display = searchPool.indexOf(term) !== -1 ? "block" : "none";
-    });
+function handleSingleCheckboxChange(node) {
+    const targetSlNo = String(node.getAttribute('data-slno'));
+    if (node.checked) {
+        if (!activeSelectedSlNos.includes(targetSlNo)) {
+            activeSelectedSlNos.push(targetSlNo);
+        }
+    } else {
+        activeSelectedSlNos = activeSelectedSlNos.filter(id => id !== targetSlNo);
+    }
+    evaluateQidSelectionState();
+    syncMasterCheckboxState();
 }
+
+/**
+ * FEATURE 2 ENGINE: Toggles selection states ONLY for elements currently visible in view matrix
+ */
+function toggleAllQidCheckboxes(masterNode) {
+    const isChecked = masterNode.checked;
+    console.log(`>>> [SELECTION SYSTEM] Master toggle state changed to: [${isChecked}]`);
+    
+    // Find matching elements within active card wrapper nodes
+    const visibleCheckboxes = document.querySelectorAll('.qid-user-card .qid-row-checkbox');
+    
+    visibleCheckboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const targetSlNo = String(cb.getAttribute('data-slno'));
+        
+        if (isChecked) {
+            if (!activeSelectedSlNos.includes(targetSlNo)) activeSelectedSlNos.push(targetSlNo);
+        } else {
+            activeSelectedSlNos = activeSelectedSlNos.filter(id => id !== targetSlNo);
+        }
+    });
+    
+    evaluateQidSelectionState();
+}
+
+/**
+ * FEATURE 2 ENGINE: Evaluates current checked counts and handles floating action bar shifts
+ */
+function evaluateQidSelectionState() {
+    const panel = document.getElementById('qidBatchActionPanel');
+    const countText = document.getElementById('qidSelectedCountText');
+    const totalCount = activeSelectedSlNos.length;
+    
+    if (totalCount > 0) {
+        if (countText) {
+            countText.innerText = `${totalCount} item${totalCount > 1 ? 's' : ''} selected for deletion`;
+        }
+        if (panel && panel.classList.contains('d-none')) {
+            panel.classList.remove('d-none');
+        }
+    } else {
+        if (panel && !panel.classList.contains('d-none')) {
+            panel.classList.add('d-none');
+        }
+        
+        const master = document.getElementById('qidMasterCheckbox');
+        if (master && master.checked) {
+            master.checked = false;
+        }
+    }
+}
+
+/**
+ * Synchronizes the state of the top master checkbox control using viewport parameters
+ */
+function syncMasterCheckboxState() {
+    const master = document.getElementById('qidMasterCheckbox');
+    if (!master) return;
+    
+    const visibleCheckboxes = document.querySelectorAll('.qid-user-card .qid-row-checkbox');
+    if (visibleCheckboxes.length === 0) {
+        master.checked = false;
+        return;
+    }
+    
+    const allVisibleChecked = Array.from(visibleCheckboxes).every(cb => cb.checked);
+    master.checked = allVisibleChecked;
+}
+
+/**
+ * FEATURE 2 ENGINE: Resets all checkboxes and safely retracts structural overlays
+ */
+function clearQidSelections() {
+    activeSelectedSlNos = [];
+    const checkboxes = document.querySelectorAll('.qid-row-checkbox');
+    checkboxes.forEach(cb => cb.checked = false);
+    
+    const master = document.getElementById('qidMasterCheckbox');
+    if (master) master.checked = false;
+    
+    evaluateQidSelectionState();
+}
+
+// =========================================================================
+// ACTION PROMPTS, MODIFICATIONS & BATCH DELETE EXECUTION ENGINES
+// =========================================================================
 
 /**
  * Helper Utility to trigger highly customized professional confirmation/status alerts
@@ -1024,7 +1229,7 @@ function actionRemoveQidUser(slNo, name) {
             google.script.run
                 .withSuccessHandler(function(response) {
                     console.log(">>> [DELETE QID SUCCESS]", response);
-                    openQidHubModal(); // Soft dynamic refresh reload
+                    openQidHubModal(); 
                 })
                 .withFailureHandler(function(err) {
                     showQidActionPrompt({
@@ -1055,14 +1260,13 @@ function actionModifyQidUser(slNo) {
     document.getElementById('editQidName').value = targetRecord.name || "";
     document.getElementById('editQidDocNo').value = targetRecord.idNo || "";
     
-    // Sanitize phone number before showing it in the edit input line
+    // Sanitize phone input formats automatically to match strict data protocols (+91 prefix removal)
     let cleanPhoneDisplay = (targetRecord.phone || "").toString().replace(/^\+91/, "").replace(/\s+/g, "");
     document.getElementById('editQidPhone').value = cleanPhoneDisplay;
     
     // Fire up the modal overlay element frame cleanly
     const editModalEl = document.getElementById('qidEditUserModal');
-    const modalInstance = bootstrap.Modal.getOrCreateInstance(editModalEl);
-    modalInstance.show();
+    bootstrap.Modal.getOrCreateInstance(editModalEl).show();
 }
 
 /**
@@ -1090,12 +1294,11 @@ function submitQidProfileEdits() {
             saveButton.disabled = false;
             saveButton.innerText = "Save Changes";
             
-            // Dismiss the active edit layer panel modal dynamically
             const editModalEl = document.getElementById('qidEditUserModal');
             bootstrap.Modal.getOrCreateInstance(editModalEl).hide();
             
             console.log(">>> [UPDATE QID PROFILES COMPLETED]", response);
-            openQidHubModal(); // Dynamically re-fetch rows and refresh the dashboard grid
+            openQidHubModal(); 
         })
         .withFailureHandler(function(err) {
             saveButton.disabled = false;
@@ -1129,22 +1332,19 @@ function launchSecureQidPreview(rawUrl) {
     const spinner = document.getElementById('qidPreviewImageSpinner');
     const modalInstance = bootstrap.Modal.getOrCreateInstance(previewModalEl);
     
-    // 1. Enter Loading State & Display Lightbox Framework instantly
     imageFrame.style.opacity = "0.0";
     spinner.classList.remove('d-none');
     modalInstance.show();
     
-    // 2. Run the secure internal file stream call
     google.script.run
         .withSuccessHandler(function(base64DataStream) {
             spinner.classList.add('d-none');
             
             if (!base64DataStream || base64DataStream === "ERROR") {
-                alert("Google Drive security layer blocked raw URL streaming. Please verify the spreadsheet file layout.");
+                alert("Google Drive security layer blocked raw URL streaming. Please verify spreadsheet permissions.");
                 return;
             }
             
-            // 3. Inject the safe binary data string directly into the image element
             imageFrame.src = base64DataStream;
             imageFrame.style.opacity = "1";
         })
@@ -1156,7 +1356,6 @@ function launchSecureQidPreview(rawUrl) {
         .getDriveImageAsBase64(rawUrl);
 }
 
-/** Delete guest details***/
 /**
  * Modernized Delete Controller: Launches action prompt confirmation before backend extraction
  */
@@ -1167,9 +1366,9 @@ function actionPurgeGuestRecord(name, checkInDate) {
         message: `Are you certain you want to permanently delete the entire reservation history for ${name} checking in on ${checkInDate}?`,
         confirmText: "Delete Guest",
         onConfirm: function() {
-            
-            // Triggers the inner button loop AND center dashboard layout spinner concurrently!
-            toggleRefreshLoadingState(true);
+            if (typeof toggleRefreshLoadingState === "function") {
+                toggleRefreshLoadingState(true);
+            }
             
             google.script.run
               .withSuccessHandler(function(response) {
@@ -1181,9 +1380,110 @@ function actionPurgeGuestRecord(name, checkInDate) {
               .withFailureHandler(function(err) {
                   alert("Deletion Aborted: " + err.message);
               })
-              .deleteGuestRowBackend(name, checkInDate); // Dropped year parameter here
+              .deleteGuestRowBackend(name, checkInDate);
         }
     });
+}
+
+/**
+ * EXECUTION ENGINE: Upgraded to prevent animation/backdrop race conditions and handle multi-selections smoothly
+ */
+function triggerBatchDeleteQid() {
+    if (activeSelectedSlNos.length === 0) return;
+    
+    console.log(`>>> [DELETION PIPELINE] Initialized batch processing loop arrays for:`, activeSelectedSlNos);
+    
+    const hubModalEl = document.getElementById('qidHubModal');
+    const actionModalEl = document.getElementById('qidActionModal');
+    
+    const iconContainer = document.getElementById('qidActionIconContainer');
+    const icon = document.getElementById('qidActionIcon');
+    const title = document.getElementById('qidActionTitle');
+    const message = document.getElementById('qidActionMessage');
+    const confirmBtn = document.getElementById('btnQidActionConfirm');
+    
+    // Clean up event listeners on the confirmation button
+    const freshConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(freshConfirmBtn, confirmBtn);
+    
+    // --- SETUP CONFIRMATION MODAL CONTENT DIRECTLY ---
+    title.innerText = "Confirm Batch Deletion";
+    message.innerHTML = `Are you sure you want to permanently delete all <strong>${activeSelectedSlNos.length} selected profiles</strong>?<br><span class="text-danger fw-medium">This will remove their data from the ledger and purge all associated images from Google Drive.</span>`;
+    
+    if (iconContainer) iconContainer.className = "mb-3 d-flex align-items-center justify-content-center mx-auto rounded-circle bg-danger-subtle text-danger";
+    if (icon) icon.className = "bi bi-exclamation-triangle-fill fs-3";
+    
+    freshConfirmBtn.className = "btn btn-sm btn-danger text-white px-3 w-50";
+    freshConfirmBtn.innerText = "Delete Records";
+    
+    // Handle the deletion processing loop
+    freshConfirmBtn.addEventListener('click', function() {
+        const totalItems = activeSelectedSlNos.length;
+        console.log(`>>> [DELETION PIPELINE] Batch execution confirmed for ${totalItems} items.`);
+        
+        // 1. Hide confirmation wrapper pop-up modal
+        let bsActionModal = bootstrap.Modal.getInstance(actionModalEl);
+        if (bsActionModal) bsActionModal.hide();
+        
+        // 2. Inject the inline spinner directly into the main QID Registry feed
+        const userFeedContainer = document.getElementById('qidUserFeed');
+        if (userFeedContainer) {
+            userFeedContainer.innerHTML = `
+                <div class="col-12 text-center py-5 animate__animated animate__fadeIn">
+                    <div class="spinner-border text-danger" role="status" style="width: 2.5rem; height: 2.5rem;"></div>
+                    <div class="mt-3 text-secondary fw-medium small">
+                        Permanently purging ${totalItems} secure registry profile(s)...
+                    </div>
+                    <div class="text-muted mt-1" style="font-size: 11px;">
+                        Updating cloud storage ledgers, please do not close this window.
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Hide floating bottom action snackbar panel
+        const batchPanel = document.getElementById('qidBatchActionPanel');
+        if (batchPanel) batchPanel.style.display = 'none';
+        
+        // 3. Call Apps Script backend execution pipeline
+        google.script.run
+          .withSuccessHandler(function(response) {
+             console.log(">>> [SERVER API SUCCESS] Batch delete sweep finalized.");
+             
+             // Reset selections
+             if (typeof clearQidSelections === "function") clearQidSelections();
+             activeSelectedSlNos = [];
+             
+             const masterCheckbox = document.getElementById('qidMasterCheckbox');
+             if (masterCheckbox) masterCheckbox.checked = false;
+             
+             // Reload data grid seamlessly without flickering the parent modal
+             if (typeof fetchMasterQidDataMatrix === "function") {
+                 fetchMasterQidDataMatrix();
+             } else if (typeof refreshAllDashboardsAndRegistries === "function") {
+                 refreshAllDashboardsAndRegistries();
+             } else {
+                 openQidHubModal();
+             }
+          })
+          .withFailureHandler(function(err) {
+             console.error(">>> [SERVER API FAILURE] Transaction aborted:", err);
+             if (userFeedContainer) {
+                 userFeedContainer.innerHTML = `
+                     <div class="col-12 alert alert-danger border-0 shadow-sm mx-2">
+                         <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                         <strong>Batch Deletion Failed:</strong> ${err.message}
+                     </div>
+                 `;
+             }
+           })
+          .deleteQidRowsBatchBackend(activeSelectedSlNos);
+    });
+
+    // --- EXECUTION STEP ---
+    // Do NOT hide hubModalEl anymore! Show actionModalEl stacked on top of it.
+    let modalInstance = bootstrap.Modal.getInstance(actionModalEl) || new bootstrap.Modal(actionModalEl);
+    modalInstance.show();
 }
 
 

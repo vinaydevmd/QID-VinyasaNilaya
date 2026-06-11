@@ -1127,6 +1127,37 @@ function deleteQidRowBackend(slNo) {
       // Column A contains the SlNo map index
       if (parseInt(values[i][0]) === parseInt(slNo)) {
         const actualRowInSheet = i + 1;
+        const targetRowData = values[i];
+
+        // Extract URLs from indices 10, 11, and 12
+        const frontUrl  = targetRowData[10] || "";
+        const backUrl   = targetRowData[11] || "";
+        const selfieUrl = targetRowData[12] || "";
+
+        const filesToPurge = [frontUrl, backUrl, selfieUrl];
+        let fileDeleteCount = 0;
+
+        filesToPurge.forEach(url => {
+          if (url && url.toString().trim() !== "") {
+            // Call the robust extractor helper defined below
+            const fileId = extractDriveIdSafely(url.toString().trim());
+            
+            if (fileId) {
+              try {
+                const file = DriveApp.getFileById(fileId);
+                file.setTrashed(true);
+                fileDeleteCount++;
+                console.log(`>>> [STORAGE PURGE] Trashed associated Drive File ID: [${fileId}]`);
+              } catch (fileErr) {
+                console.warn(`>>> [STORAGE PURGE WARNING] File ID [${fileId}] could not be found or was already removed: ${fileErr.message}`);
+              }
+            }
+          }
+        });
+
+        console.log(`>>> [STORAGE PURGE COMPLETE] Total asset objects moved to trash bin: [${fileDeleteCount}]`);
+
+        // Delete the ledger row matrix completely from the spreadsheet
         sheet.deleteRow(actualRowInSheet);
         SpreadsheetApp.flush();
         console.log(">>> [BACKEND DELETE SUCCESS] Removed SlNo [" + slNo + "] at Sheet Row [" + actualRowInSheet + "]");
@@ -1138,6 +1169,30 @@ function deleteQidRowBackend(slNo) {
     console.error(">>> [DELETE QID BACKEND CRITICAL ERROR]", err);
     throw new Error(err.message);
   }
+}
+
+/**
+ * Robust helper function to extract a 33-character Google Drive File ID 
+ * from various standard Google Drive link formats.
+ */
+function extractDriveIdSafely(url) {
+  if (!url) return null;
+  
+  // Pattern 1: Look for standard /file/d/{ID}/view formats
+  if (url.includes("/file/d/")) {
+    const parts = url.split("/file/d/");
+    if (parts.length > 1) {
+      return parts[1].split("/")[0];
+    }
+  }
+  
+  // Pattern 2: Look for query parameter structures (?id=... or &id=...)
+  const match = url.match(/[?&]id=([^&]+)/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  
+  return null;
 }
 
 /**
@@ -1324,6 +1379,132 @@ function syncBookingToVinyasaCalendar(guestName, checkInDateInput, totalGuests, 
   }
 }
 
+
+/**** QID fileter and bulk delte feature */
+/**
+ * Feature 2 Backend: Iterates over selected row vectors, wipes Drive file allocations,
+ * and handles consecutive matrix indexing contractions from highest index down.
+ *
+ * @param {Array<string|number>} slNoArray - Unified collection of Serial mapping records.
+ * @return {string} Confirmation token feed.
+ */
+function deleteQidRowsBatchBackend(slNoArray) {
+  if (!slNoArray || !Array.isArray(slNoArray) || slNoArray.length === 0) {
+    throw new Error("Invalid selection payload collection provided.");
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(ID_QID_VERIFIED_LIST);
+    const sheet = ss.getSheetByName(SHEET_NAME_QID);
+    if (!sheet) throw new Error(`Target tab config "${SHEET_NAME_QID}" missing.`);
+
+    const numericalSlNos = slNoArray.map(id => parseInt(id));
+    const values = sheet.getDataRange().getValues();
+    let deletedRowsRecordList = [];
+
+    // 1. CLEAR ASSOCIATED DRIVE STORAGE ASSETS
+    for (let i = 1; i < values.length; i++) {
+      const currentSlNo = parseInt(values[i][0]);
+      
+      if (numericalSlNos.includes(currentSlNo)) {
+        const targetRowData = values[i];
+        const frontUrl  = targetRowData[10] || "";
+        const backUrl   = targetRowData[11] || "";
+        const selfieUrl = targetRowData[12] || "";
+        const filesToPurge = [frontUrl, backUrl, selfieUrl];
+
+        filesToPurge.forEach(url => {
+          if (url && url.toString().trim() !== "") {
+            const fileId = extractDriveIdSafely(url.toString().trim());
+            if (fileId) {
+              try {
+                DriveApp.getFileById(fileId).setTrashed(true);
+              } catch (fErr) {
+                console.warn(`[BATCH PURGE SKIP] ID ${fileId} inaccessible: ${fErr.message}`);
+              }
+            }
+          }
+        });
+
+        // Store the original sheet row index coordinate (1-indexed mapping adjustment)
+        deletedRowsRecordList.push(i + 1);
+      }
+    }
+
+    // 2. CRITICAL STEP: Sort row indices in DESCENDING order before deleting.
+    // If you delete row 5 first, row 10 shifts up to row 9, causing data misalignment.
+    // Deleting from the bottom up completely bypasses this indexing bug.
+    deletedRowsRecordList.sort((a, b) => b - a);
+
+    deletedRowsRecordList.forEach(rowIndex => {
+      sheet.deleteRow(rowIndex);
+    });
+
+    SpreadsheetApp.flush();
+    console.log(`>>> [BATCH DELETION SUCCESS] Successfully purged ${deletedRowsRecordList.length} records from ledger.`);
+    return "SUCCESS";
+
+  } catch (err) {
+    console.error(">>> [BATCH DELETION EXCEPTION BLOCK] Action failed: ", err);
+    throw new Error(err.message);
+  }
+}
+
+/**
+ * Backend API: Scans a parent Google Drive directory for folders named "QID-YYYY",
+ * extracts unique year tokens, and returns them ordered with the current active year.
+ * * @return {Object} An inventory of available years and the active calendar default year tag.
+ */
+function getDynamicQidYearsConfig() {
+  // CONSTANT PARAMETER: Replace with the exact Folder ID where your QID folders live
+  const PARENT_FOLDER_ID = "YOUR_MASTER_ROOT_DRIVE_FOLDER_ID"; 
+  
+  let detectedYears = [];
+  const currentCalendarYear = new Date().getFullYear().toString(); // Default fallback "2026"
+  
+  try {
+    const parentFolder = DriveApp.getFolderById(PARENT_FOLDER_ID);
+    const subFolders = parentFolder.getFolders();
+    
+    // Regular Expression targeting patterns like "QID-2026" or "QID-2027"
+    const pattern = /^QID-(\d{4})$/;
+    
+    while (subFolders.hasNext()) {
+      const folder = subFolders.next();
+      const match = folder.getName().trim().match(pattern);
+      
+      if (match && match[1]) {
+        const yearValue = match[1];
+        if (!detectedYears.includes(yearValue)) {
+          detectedYears.push(yearValue);
+        }
+      }
+    }
+    
+    // Sort years chronologically in descending order (newest years first)
+    detectedYears.sort((a, b) => parseInt(b) - parseInt(a));
+    
+    // Failsafe condition: If no folders are matched, append current year to keep UI operational
+    if (detectedYears.length === 0) {
+      detectedYears.push(currentCalendarYear);
+    }
+    
+    console.log(`>>> [SERVER DRIVE ARMED] Detected dynamic QID year sets: [${detectedYears.join(', ')}]`);
+    
+    return {
+      years: detectedYears,
+      activeYear: detectedYears.includes(currentCalendarYear) ? currentCalendarYear : detectedYears[0]
+    };
+    
+  } catch (err) {
+    console.error(">>> [SERVER EXCEPTION CRASH] Dynamic folder parsing dropped unexpected exception: ", err);
+    // Hard fallback layout parameter return
+    return {
+      years: [currentCalendarYear],
+      activeYear: currentCalendarYear
+    };
+  }
+}
 
 
 /********************* Test functions *************************/
