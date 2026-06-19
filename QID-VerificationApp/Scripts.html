@@ -1,11 +1,5 @@
 <script>
   let stream;
-  
-  // High-efficiency cache container to hold downscaled Base64 assets for backend processing
-  let compressedIdAssets = {
-    frontPreview: null,
-    backPreview: null
-  };
 
   /**
    * Phase 1: Dynamically updates ID options based on Nationality radio selection
@@ -40,89 +34,66 @@
     toggleSecondarySections(false);
   });
 
-  /**
-   * Core Image Interceptor, Processing, & Compression Pipeline
-   */
+  /*Handle preview */
+  
   async function handlePreview(inputElement, previewContainerId) {
     const container = document.getElementById(previewContainerId);
     const file = inputElement.files[0];
     
     if (!file) {
-      evaluateUploadStatus();
+      if (typeof evaluateUploadStatus === "function") evaluateUploadStatus();
       return;
     }
     
+    // 1. Show processing state instantly
     container.innerHTML = `
       <div class="d-flex flex-column align-items-center justify-content-center h-100 py-3">
         <div class="spinner-border spinner-border-sm text-primary mb-1" role="status"></div>
         <span class="small text-muted fw-semibold">Processing...</span>
       </div>`;
 
-    try {
-      const compressedBase64 = await compressIdImage(file, 1200, 0.85);
-      compressedIdAssets[previewContainerId] = compressedBase64;
-
+    // OPTIMIZATION: Use Object URL instead of FileReader DataURL to preserve mobile memory limits
+    const objectUrl = URL.createObjectURL(file);
+    
+    const img = new Image();
+    img.src = objectUrl;
+    
+    img.onload = function() {
+      // 2. Render optimized UI layout 
       container.innerHTML = `
-      <div style="position: relative; width: 100%; height: 100%;">
-        <img src="${compressedBase64}" class="preview-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
-        <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.85); padding: 5px 0; z-index: 10;">
-          <p class="small text-success m-0 fw-bold text-center">
-            <i class="bi bi-check-circle-fill me-1"></i>ID Photo Ready ✓
-          </p>
-        </div>
-      </div>`;
-
-      evaluateUploadStatus();
-
-    } catch (error) {
-      console.error("Downscale compression operational fault:", error);
-      container.innerHTML = `
-        <div class="text-center text-danger py-3">
-          <i class="bi bi-exclamation-octagon-fill h3"></i>
-          <span class="d-block small fw-bold">Compression Error</span>
+        <div style="position: relative; width: 100%; height: 100%;">
+          <img src="${objectUrl}" class="preview-image" style="width: 100%; height: 100%; object-fit: cover; border-radius: 12px;">
+          <div style="position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(255,255,255,0.85); padding: 5px 0; z-index: 10;">
+            <p class="small text-success m-0 fw-bold text-center">
+              <i class="bi bi-check-circle-fill me-1"></i>ID Photo Ready ✓
+            </p>
+          </div>
         </div>`;
-      showNotification("Image Processing Error", "Failed to compress selected ID document image. Please try again.", "error");
+        
+      // FIX: Status matrix evaluation is now safely triggered AFTER the DOM updates
+      if (typeof evaluateUploadStatus === "function") {
+        evaluateUploadStatus();
+      }
+    };
+      
+    img.onerror = function() {
+      URL.revokeObjectURL(objectUrl);
+      if (typeof showPermissionError === "function") showPermissionError();
+    };
+  }
+
+  // Function to show the permission modal
+  function showPermissionError() {
+    const modalLib = window.bootstrap || bootstrap;
+    if (typeof modalLib !== 'undefined') {
+      const pModal = new modalLib.Modal(document.getElementById('permissionModal'));
+      pModal.show();
+    } else {
+      alert("Camera Access Denied: Please check your browser's site settings (click the lock icon in the URL bar).");
     }
   }
 
-  function compressIdImage(file, maxBoundary, quality) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = function(event) {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = function() {
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > maxBoundary) {
-              height *= maxBoundary / width;
-              width = maxBoundary;
-            }
-          } else {
-            if (height > maxBoundary) {
-              width *= maxBoundary / height;
-              height = maxBoundary;
-            }
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          const base64Result = canvas.toDataURL('image/jpeg', quality);
-          resolve(base64Result);
-        };
-        img.onerror = err => reject(err);
-      };
-      reader.onerror = err => reject(err);
-    });
-  }
-
+  // Evaluate upload status
   function evaluateUploadStatus() {
     const frontInput = document.getElementById('idFront');
     const backInput = document.getElementById('idBack');
@@ -145,6 +116,7 @@
     }
   }
 
+  // Clean mobile number
   function cleanMobileNumber(rawNumber) {
     if (rawNumber === undefined || rawNumber === null) return "";
     let numStr = String(rawNumber).trim();
@@ -213,6 +185,13 @@
           const verifiedCheckbox = document.getElementById('detailsVerified');
           if (verifiedCheckbox) verifiedCheckbox.checked = false;
 
+          // FIX: Smooth transition down to the verified data card for existing guests
+          setTimeout(() => {
+            if (ocrConfirmation) {
+              ocrConfirmation.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 150);
+
         } else {
           document.getElementById('isExistingGuest').value = "false";
           document.getElementById('rowNumber').value = "";
@@ -225,6 +204,13 @@
           if (idUploadSection) idUploadSection.classList.remove('d-none');
           if (ocrConfirmation) ocrConfirmation.classList.add('d-none');
           if (welcomeMsg) welcomeMsg.classList.add('d-none');
+
+          // FIX: Smooth transition down to the upload boxes for fresh workflows
+          setTimeout(() => {
+            if (idUploadSection) {
+              idUploadSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }, 150);
         }
 
         if (typeof showVerificationSection === "function") {
@@ -247,7 +233,7 @@
   /**
    * CRITICAL ACTION HANDLER: Bypasses sections for existing records
    */
-function handleIdentityConfirmation() {
+  function handleIdentityConfirmation() {
     const isExisting = document.getElementById('isExistingGuest').value === "true";
     const verifiedCheckbox = document.getElementById('detailsVerified');
     
@@ -305,6 +291,53 @@ function handleIdentityConfirmation() {
     validateFormState();
   }
 
+  // Shared optimized compression engine for ID Front, ID Back, and File Fallbacks
+  const convertAndCompressToBase64 = file => new Promise((resolve, reject) => {
+    if (!file) resolve(null);
+    
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
+    
+    img.onload = function() {
+      const maxBoundary = 1600; // Flawless OCR text resolution, safe size payload
+      let width = img.width;
+      let height = img.height;
+      
+      if (width > maxBoundary || height > maxBoundary) {
+        if (width > height) {
+          height *= maxBoundary / width;
+          width = maxBoundary;
+        } else {
+          width *= maxBoundary / height;
+          height = maxBoundary;
+        }
+      }
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      
+      // Solid white backdrop to guard against alpha channel transparency inversion
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(0, 0, width, height);
+      
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      const base64Result = canvas.toDataURL('image/jpeg', 0.85);
+      URL.revokeObjectURL(objectUrl);
+      resolve(base64Result);
+    };
+    
+    img.onerror = (err) => {
+      URL.revokeObjectURL(objectUrl);
+      reject(err);
+    };
+  });
+
   /* Handle OCR Engine Scans */
   async function handleIdScan() {
     const frontFile = document.getElementById('idFront').files[0];
@@ -325,7 +358,15 @@ function handleIdentityConfirmation() {
     if (spinner) spinner.classList.remove('d-none');
     if (btnText) btnText.innerText = 'Analyzing ' + idType ;
 
+
     try {
+
+     // 1. Read and compress both images simultaneously using global shared engine
+      const [frontBase64, backBase64] = await Promise.all([
+        convertAndCompressToBase64(frontFile),
+        convertAndCompressToBase64(backFile)
+      ]);
+
       google.script.run
         .withSuccessHandler(function(res) {
           google.script.run
@@ -384,7 +425,7 @@ function handleIdentityConfirmation() {
           resetImageUploads();
           showNotification("Scan Failed", "We couldn't extract distinct characters from your " + idType + ". Please attempt using crisp, bright photos.", "error");
         })
-        .executeOcrFlow(compressedIdAssets.frontPreview, compressedIdAssets.backPreview, idType, nationality);
+        .executeOcrFlow(frontBase64, backBase64, idType, nationality);
 
     } catch (error) {
       if (btn) {
@@ -395,7 +436,7 @@ function handleIdentityConfirmation() {
       showNotification("Upload Error", "There was an error reading localized document structures.", "error");
     }
   }
-/**
+  /**
    * Progressive Node Visibility Controller
    */
   function toggleSecondarySections(isVerified) {
@@ -533,7 +574,6 @@ function handleIdentityConfirmation() {
 
     let isFormValid = false;
     if (isExisting) {
-      // FIX: Added explicit hasPurpose and hasCity checks to protect existing guest route submission
       isFormValid = hasName && hasId && idVerified && hasPurpose && hasCity && hasSelfie && termsAccepted;
     } else {
       isFormValid = hasName && hasId && idVerified && emergencyName && emergencyPhone && hasCity && hasPurpose && hasSelfie && termsAccepted;
@@ -552,7 +592,6 @@ function handleIdentityConfirmation() {
         if (!idVerified) {
           warningMsg.innerHTML = '<i class="bi bi-person-check-fill me-2"></i>Please verify identity details.';
         } else if (isExisting && (!hasCity || !hasPurpose)) {
-          // Warning state specifically targeting unselected elements for existing user check-ins
           warningMsg.innerHTML = '<i class="bi bi-airplane-fill me-2"></i>Travel tracking info missing.';
         } else if (!isExisting && (!emergencyName || !emergencyPhone)) {
           warningMsg.innerHTML = '<i class="bi bi-telephone-plus-fill me-2"></i>Emergency details required.';
@@ -565,6 +604,27 @@ function handleIdentityConfirmation() {
         } else {
           warningMsg.innerHTML = '<i class="bi bi-info-circle-fill me-2"></i>Complete all sections to unlock button.';
         }
+      }
+    }
+
+    // --- INTEGRATED SCROLL AUTOMATION FOR DOWNSTREAM ACTIONS ---
+    if (hasSelfie) {
+      const secTerms = document.getElementById('sec_terms');
+      const submitContainer = document.getElementById('submitContainer');
+      
+      // Force structural display activation
+      if (secTerms) secTerms.classList.remove('d-none');
+      if (submitContainer) submitContainer.classList.remove('d-none');
+
+      // Check the global single-fire semaphore flag
+      if (!window.hasAutoScrolledToTerms) {
+        window.hasAutoScrolledToTerms = true;
+        
+        setTimeout(() => {
+          if (secTerms) {
+            secTerms.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 350); // Delay gives the browser time to clear classes and calculate heights cleanly
       }
     }
   }
@@ -749,14 +809,13 @@ function handleIdentityConfirmation() {
     }
   }
 
+  /*Reset image uploads*/
   function resetImageUploads() {
     const frontInput = document.getElementById('idFront');
     const backInput = document.getElementById('idBack');
     if (frontInput) frontInput.value = "";
     if (backInput) backInput.value = "";
     
-    compressedIdAssets.frontPreview = null;
-    compressedIdAssets.backPreview = null;
 
     const spinner = document.getElementById('scanSpinner');
     if (spinner) spinner.classList.add('d-none');
@@ -902,6 +961,10 @@ function handleIdentityConfirmation() {
       submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Processing Check-in...`;
     }
 
+    //2. Take front and back ID's
+    const frontFile = document.getElementById('idFront').files[0];
+    const backFile = document.getElementById('idBack').files[0]; // Fetch the back side
+
     let selfieBase64Data = "";
     const canvas = document.getElementById('selfieCanvas');
     const selfieInput = document.getElementById('selfieInput');
@@ -930,62 +993,63 @@ function handleIdentityConfirmation() {
         return showNotification("Missing Photo", "Please take or upload a confirmation profile image to continue.", "warning");
       }
 
-      const formData = {
-        isUpdate: isUpdate,
-        rowNumber: rowNumber,
-        name: document.getElementById('name')?.value || "",
-        idType: document.getElementById('idType')?.value || "",
-        idNumber: document.getElementById('idNumber')?.value || "",
-        whatsapp: cleanMobileNumber(document.getElementById('whatsapp')?.value || ""),
-        purpose: document.getElementById('purpose')?.value || "",
-        city: document.getElementById('city')?.value || "",
-        emergencyName: document.getElementById('emergencyName')?.value || "",
-        emergencyPhone: cleanMobileNumber(document.getElementById('emergencyPhone')?.value || ""),
-        idFrontBase64: compressedIdAssets.frontPreview || null, 
-        idBackBase64: compressedIdAssets.backPreview || null,
-        selfieBase64: selfieBase64Data,
-        address: document.getElementById('address')?.value || ""
-      };
+    const formData = {
+      isUpdate: isUpdate,
+      rowNumber: rowNumber,
+      name: document.getElementById('name')?.value || "",
+      idType: document.getElementById('idType')?.value || "",
+      idNumber: document.getElementById('idNumber')?.value || "",
+      whatsapp: cleanMobileNumber(document.getElementById('whatsapp')?.value || ""),
+      purpose: document.getElementById('purpose')?.value || "",
+      city: document.getElementById('city')?.value || "",
+      emergencyName: document.getElementById('emergencyName')?.value || "",
+      emergencyPhone: cleanMobileNumber(document.getElementById('emergencyPhone')?.value || ""),
+      idFrontBase64: frontFile ? await convertAndCompressToBase64(frontFile) : null, 
+      idBackBase64: backFile ? await convertAndCompressToBase64(backFile) : null,
+      selfieBase64: selfieBase64Data,
+      address: document.getElementById('address')?.value || ""
+    };
 
-      google.script.run
-        .withSuccessHandler(function(res) {
-          if (res && res.success) {
-            showNotification("Check-in Successful", `Registration Complete!`, "success");
-            if (submitBtn) submitBtn.innerHTML = "✓ Check-in Complete";
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.success) {
+          showNotification("Check-in Successful", `Registration Complete!`, "success");
+          if (submitBtn) submitBtn.innerHTML = "✓ Check-in Complete";
 
-            setTimeout(() => {
-              resetRegistrationForm();
-              resetSelfieSection();
-            }, 2500);
-          } else {
-            showNotification("Processing Issue", (res.error || "Unknown server database context error execution state"), "error");
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.innerHTML = "Complete Check-in";
-            }
-          }
-        })
-        .withFailureHandler(function(err) {
+          setTimeout(() => {
+            resetRegistrationForm();
+            resetSelfieSection();
+          }, 2500);
+        } else {
+          showNotification("Processing Issue", (res.error || "Unknown server database context error execution state"), "error");
           if (submitBtn) {
             submitBtn.disabled = false;
             submitBtn.innerHTML = "Complete Check-in";
           }
-          showNotification("Submission Error", (err.message || 'Server ecosystem breakdown context tracking error handle'), "error");
-        })
-        .processSubmission(formData);
+        }
+      })
+      .withFailureHandler(function(err) {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = "Complete Check-in";
+        }
+        showNotification("Submission Error", (err.message || 'Server ecosystem breakdown context tracking error handle'), "error");
+      })
+      .processSubmission(formData);
 
     } catch (payloadError) {
-      console.error("Local processing error:", payloadError);
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = "Complete Check-in";
+        console.error("Local processing error:", payloadError);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = "Complete Check-in";
+        }
+        showNotification("Local Data Error", "Unable to correctly process image stream data assets.", "error");
       }
-      showNotification("Local Data Error", "Unable to correctly process image stream data assets.", "error");
     }
-  }
 
   // Alias to bridge the gap between old inline HTML event attributes and the new layout function
   function validateFormCompletion() {
     validateFormState();
   }
+
 </script>
