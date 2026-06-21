@@ -1506,6 +1506,169 @@ function getDynamicQidYearsConfig() {
   }
 }
 
+/** Function to sent whatsapp messages via API token*/
+/**
+ * Core Automation: Dispatches pre-approved Meta WhatsApp Cloud API templates
+ * @param {string} recipientPhone Raw country code + mobile number string
+ * @param {string} type Template variant selection: 'verification' | 'welcome' | 'feedback'
+ * @param {string} guestName Guest name string payload mapping to token placeholders
+ * @return {object} Response status object containing operational success details
+ */
+/*function dispatchWhatsAppCloudApiNotification(recipientPhone, type, guestName) {
+  // 1. YOUR API CONFIGURATION REPOSITORY
+  const ACCESS_TOKEN = "EAAWXQE1NgSwBRpZClkPEuzvKvcEa8gm2BLN5jPuIOLrTGjplv5hcBA8B43jEZA4ZC4XuvZBiFmNTZBGYRZCdZCK2CiiFc067iZBCFEntmBKX7TKIQlXJrhcxfr11EpQGUO0wNUdTC89N3Ftlb50HPtBqU7BZBBq639cOUuRAOTvBgZCT047bGO8YsGz2iIQat7fMMhUq2pxMuesWJhZCXZC2t7LJAlOkhjeVQfNK23GQm4tABIYZC0lTdEBhDDtN58rQQd9jyHZCuajttBMUehVnGHAU6ZA";
+  const PHONE_NUMBER_ID = "1167195976478818";
+  
+  const apiEndpoint = `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`;
+  
+  // 2. CLEAN PHONE NUMBER FORMAT (Enforces raw, clean e.164 formats without + sign)
+  let cleanPhone = recipientPhone.toString().replace(/[^0-9]/g, "");
+  if (cleanPhone.length === 10) {
+    cleanPhone = "91" + cleanPhone; // Fallback to Indian prefix if passed as localized number
+  }
+
+  // Extract first name for the personalized greeting template
+  const guestFirstName = guestName ? guestName.split(' ')[0] : 'Guest';
+  
+  // 3. MAP THE INBOUND SELECTION VARIANT TO YOUR EXACT META TEMPLATE NAMES
+  let templateName = "";
+  let templateParameters = [];
+  
+  if (type === 'verification') {
+    templateName = "guest_registration_verify"; // Change if named differently in Meta manager
+    templateParameters = [
+      { "type": "text", "text": guestFirstName },
+      { "type": "text", "text": "GuestVerification" } // Maps to your tracking variables
+    ];
+  } else if (type === 'welcome') {
+    templateName = "guest_welcome_template"; 
+    templateParameters = [
+      { "type": "text", "text": guestFirstName }
+    ];
+  } else if (type === 'feedback') {
+    templateName = "guest_feedback_template";
+    templateParameters = [
+      { "type": "text", "text": guestFirstName }
+    ];
+  } else {
+    return { success: false, message: "Invalid message type mapping error." };
+  }
+  
+  // 4. ASSEMBLE SYSTEM PAYLOAD
+  const payload = {
+    "messaging_product": "whatsapp",
+    "recipient_type": "individual",
+    "to": cleanPhone,
+    "type": "template",
+    "template": {
+      "name": templateName,
+      "language": { "code": "en_US" },
+      "components": [
+        {
+          "type": "body",
+          "parameters": templateParameters
+        }
+      ]
+    }
+  };
+  
+  const options = {
+    "method": "post",
+    "contentType": "application/json",
+    "headers": {
+      "Authorization": "Bearer " + ACCESS_TOKEN
+    },
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true
+  };
+  
+  // 5. REST EXECUTION TRANSIT STREAM
+  try {
+    console.log(`>>> [CLOUD API ROUTE] Forwarding template '${templateName}' to context target: ${cleanPhone}`);
+    const response = UrlFetchApp.fetch(apiEndpoint, options);
+    const code = response.getResponseCode();
+    const resultText = response.getContentText();
+    const resultJson = JSON.parse(resultText);
+    
+    if (code === 200 || code === 201) {
+      console.log(">>> [META API RESPONSE] Broadcast finalized. ID:", resultJson.messages[0].id);
+      return { success: true, message: "Message dispatched cleanly." };
+    } else {
+      console.error(`>>> [META API REJECTION] Code ${code}:`, resultText);
+      return { success: false, message: resultJson.error?.message || "Meta tracking transmission fault." };
+    }
+  } catch (err) {
+    console.error(">>> [CRITICAL INTERFACE FAULT] Exception on fetch transit:", err.toString());
+    return { success: false, message: err.toString() };
+  }
+}
+
+*/
+
+/**
+ * Core Automation: Dispatches Meta WhatsApp Cloud API messages.
+ * Currently optimized to route through your verified 'hello_world' template.
+ */
+function dispatchWhatsAppCloudApiNotification(recipientPhone, type, guestName) {
+  // 1. ACTIVE LIVE CREDENTIALS FROM YOUR WORKING CURL TEMPLATE
+  const PHONE_NUMBER_ID = "1167195976478818";
+  const ACCESS_TOKEN = "EAAWXQE1NgSwBRpZClkPEuzvKvcEa8gm2BLN5jPuIOLrTGjplv5hcBA8B43jEZA4ZC4XuvZBiFmNTZBGYRZCdZCK2CiiFc067iZBCFEntmBKX7TKIQlXJrhcxfr11EpQGUO0wNUdTC89N3Ftlb50HPtBqU7BZBBq639cOUuRAOTvBgZCT047bGO8YsGz2iIQat7fMMhUq2pxMuesWJhZCXZC2t7LJAlOkhjeVQfNK23GQm4tABIYZC0lTdEBhDDtN58rQQd9jyHZCuajttBMUehVnGHAU6ZA";
+  
+  // Target Endpoint updated to match your v25.0 layout request
+  const apiEndpoint = `https://graph.facebook.com/v25.0/${PHONE_NUMBER_ID}/messages`;
+  
+  // 2. CLEAN PHONE NUMBER FORMAT (Enforces raw digits string)
+  let cleanPhone = recipientPhone.toString().replace(/[^0-9]/g, "");
+  if (cleanPhone.length === 10) {
+    cleanPhone = "91" + cleanPhone; 
+  }
+
+  console.log(`>>> [SYSTEM STREAM] Preparing notification payload for target: ${cleanPhone} (Type requested: ${type})`);
+
+  // 3. ASSEMBLE SYSTEM PAYLOAD MATCHING YOUR EXACT WORKING CURL OBJECT
+  // Since 'hello_world' is your only active template, we safely direct all actions here for now.
+  const payload = {
+    "messaging_product": "whatsapp",
+    "to": cleanPhone,
+    "type": "template",
+    "template": {
+      "name": "hello_world",
+      "language": { 
+        "code": "en_US" 
+      }
+    }
+  };
+  
+  const options = {
+    "method": "post",
+    "contentType": "application/json",
+    "headers": {
+      "Authorization": "Bearer " + ACCESS_TOKEN
+    },
+    "payload": JSON.stringify(payload),
+    "muteHttpExceptions": true
+  };
+  
+  // 4. EXECUTE TRANSMISSION STREAM
+  try {
+    const response = UrlFetchApp.fetch(apiEndpoint, options);
+    const code = response.getResponseCode();
+    const resultText = response.getContentText();
+    const resultJson = JSON.parse(resultText);
+    
+    if (code === 200 || code === 201) {
+      console.log(">>> [META API RESPONSE] Message Accepted. ID:", resultJson.messages[0].id);
+      return { success: true, message: "Template transmitted successfully." };
+    } else {
+      console.error(`>>> [META API REJECTION] Code ${code}:`, resultText);
+      return { success: false, message: resultJson.error?.message || "Transmission rejected by Meta engine." };
+    }
+  } catch (err) {
+    console.error(">>> [CRITICAL CALL EXCEPTION]:", err.toString());
+    return { success: false, message: err.toString() };
+  }
+}
+
 
 /********************* Test functions *************************/
 /**

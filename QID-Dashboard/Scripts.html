@@ -444,20 +444,17 @@ function renderDashboard(data) {
      
 
         // =========================================================================
-        // ADVANCED WHATSAPP ACTION ENGINE GENERATOR
+        // ADVANCED WHATSAPP ACTION ENGINE GENERATOR (Updated version for Meta API)
         // =========================================================================
         let whatsappActionsHtml = '';
-        
+
         if (guest.WhatsApp_Num && guest.WhatsApp_Num.toString().trim().length >= 10) {
             let rawNum = guest.WhatsApp_Num.toString().trim();
             if (rawNum.startsWith("+91")) rawNum = rawNum.replace("+91", "").trim();
             if (rawNum.startsWith("91") && rawNum.length > 10) rawNum = rawNum.substring(2).trim();
 
             const targetPhone = `91${rawNum}`;
-
-            const linkVerification = getEncodedWAMessageLink('verification', targetPhone, guest.Name);
-            const linkWelcome      = getEncodedWAMessageLink('welcome', targetPhone, guest.Name);
-            const linkFeedback     = getEncodedWAMessageLink('feedback', targetPhone, guest.Name);
+            const safeNameEscaped = (guest.Name || '').replace(/'/g, "\\'");
 
             whatsappActionsHtml = `
                 <div class="dropdown d-inline-block ms-2">
@@ -467,23 +464,26 @@ function renderDashboard(data) {
                             data-bs-toggle="dropdown" 
                             aria-expanded="false"
                             style="background-color: #25D366; color: white; border: none; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; height: 22px;">
-                        <i class="bi bi-whatsapp me-1" style="font-size: 11px;"></i> Chat
+                        <i class="bi bi-whatsapp me-1" style="font-size: 11px;"></i> Chat/Send
                     </button>
                     <ul class="dropdown-menu dropdown-menu-end shadow border-0 p-1" aria-labelledby="waMenu_${index}" style="border-radius: 10px; min-width: 210px; font-size: 12px; z-index: 1050;">
                         <li>
-                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkVerification}" target="_blank" style="border-radius: 6px;">
-                                <i class="bi bi-shield-check text-success me-2 fs-6"></i> 1. Verification Link
-                            </a>
+                            <button class="dropdown-item py-2 d-flex align-items-center border-0 bg-transparent" type="button"
+                                    onclick="executeOutboundWhatsAppCall('${targetPhone}', 'verification', '${safeNameEscaped}', this)" style="border-radius: 6px;">
+                                <i class="bi bi-shield-check text-success me-2 fs-6"></i> 1. Verification Template
+                            </button>
                         </li>
                         <li>
-                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkWelcome}" target="_blank" style="border-radius: 6px;">
+                            <button class="dropdown-item py-2 d-flex align-items-center border-0 bg-transparent" type="button"
+                                    onclick="executeOutboundWhatsAppCall('${targetPhone}', 'welcome', '${safeNameEscaped}', this)" style="border-radius: 6px;">
                                 <i class="bi bi-emoji-smile text-primary me-2 fs-6"></i> 2. Welcome Guest
-                            </a>
+                            </button>
                         </li>
                         <li>
-                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkFeedback}" target="_blank" style="border-radius: 6px;">
+                            <button class="dropdown-item py-2 d-flex align-items-center border-0 bg-transparent" type="button"
+                                    onclick="executeOutboundWhatsAppCall('${targetPhone}', 'feedback', '${safeNameEscaped}', this)" style="border-radius: 6px;">
                                 <i class="bi bi-heart text-danger me-2 fs-6"></i> 3. Checkout & Feedback
-                            </a>
+                            </button>
                         </li>
                     </ul>
                 </div>
@@ -1484,6 +1484,42 @@ function triggerBatchDeleteQid() {
     // Do NOT hide hubModalEl anymore! Show actionModalEl stacked on top of it.
     let modalInstance = bootstrap.Modal.getInstance(actionModalEl) || new bootstrap.Modal(actionModalEl);
     modalInstance.show();
+}
+
+/*Sending Whatsapp messages*/
+/**
+ * Frontend Action Controller: Coordinates background WhatsApp delivery streams
+ */
+function executeOutboundWhatsAppCall(phone, type, guestName, element) {
+// 1. Provide visual interaction feedback inside the active item element rows
+const originalContent = element.innerHTML;
+element.disabled = true;
+element.innerHTML = `<span class="spinner-border spinner-border-sm text-secondary me-2" role="status"></span> Dispatched...`;
+
+console.log(`>>> [UI CORE ACTION] Initializing standalone API transit loop for:`, { phone, type, guestName });
+
+// 2. Call the Apps Script backend pipeline
+google.script.run
+    .withSuccessHandler(function(response) {
+        // Restore structural interactive capabilities
+        element.disabled = false;
+        element.innerHTML = originalContent;
+        
+        if (response.success) {
+            console.log(">>> [AUTOMATION STREAM COMPLETE] Meta API delivery acknowledged successfully.");
+            alert(`WhatsApp template message dispatched successfully to ${guestName.split(' ')[0]}!`);
+        } else {
+            console.error(">>> [AUTOMATION STREAM FAIL] Server responded with an error mapping:", response.message);
+            alert(`Meta API Engine Transmission Error: ${response.message}`);
+        }
+    })
+    .withFailureHandler(function(err) {
+        element.disabled = false;
+        element.innerHTML = originalContent;
+        console.error(">>> [API FRAMEWORK ERROR] Pipeline call failed completely:", err);
+        alert(`Execution Engine failure: ${err.message}`);
+    })
+    .dispatchWhatsAppCloudApiNotification(phone, type, guestName);
 }
 
 
