@@ -333,12 +333,68 @@ function getEncodedWAMessageLink(type, phone, guestName) {
     const guestFirstName = guestName ? guestName.split(' ')[0] : 'Guest';
     let msg = '';
     
+    // =========================================================================
+    // 1. GUEST VERIFICATION TEMPLATE
+    // =========================================================================
     if (type === 'verification') {
-        msg = 'Hello ' + guestFirstName + ',\n\nThank you for choosing Vinyasa Nilaya! 🏡\n\nTo ensure a seamless arrival, please check your registration profile and submit your digital ID verification using our secure dashboard portal link here:\n👉 https://vinyasanilaya.s.gy/GuestVerification\n\nWe look forward to welcoming you soon! Let us know if you need any assistance before check-in.';
+        msg = 'Hello ' + guestFirstName + ',\n\n' +
+              'Thank you for choosing *Vinyasa Nilaya*! 🏡\n\n' +
+              'To ensure a seamless check-in and pre-arrival verification, please review your registration profile and securely upload your digital ID via our guest dashboard portal here:\n' +
+              '👉 https://vinyasanilaya.s.gy/GuestVerification\n\n' +
+              'We look forward to welcoming you soon! Please feel free to message us here if you have any questions or require early arrival coordination.';
+              
+    // =========================================================================
+    // 2. WELCOME / READY FOR CHECK-IN MESSAGE
+    // =========================================================================
     } else if (type === 'welcome') {
-        msg = 'Hello ' + guestFirstName + ',\n\nWelcome to Vinyasa Nilaya! ✨\n\nYour check-in is ready. We hope you have an incredible, relaxing stay with us. If you have any questions regarding the house guides, amenities, or local check-ins, feel free to drop us a message anytime right here.\n\nEnjoy your time!';
-    } else if (type === 'feedback') {
-        msg = 'Hello ' + guestFirstName + ',\n\nThank you for staying at Vinyasa Nilaya! 🌿\n\nWe hope you had a wonderful trip and felt completely at home. Your feedback means the world to us. Could you take a brief minute to share your review and experience? Your feedback helps us continue crafting amazing stays for the community.\n\nSafe travels, and we look forward to hosting you again!';
+        msg = 'Hello ' + guestFirstName + ',\n\n' +
+              'Welcome to *Vinyasa Nilaya*! 🎉 We are delighted to host you.\n\n' +
+              'To ensure a seamless arrival, please review your essential check-in details below:\n\n' +
+              '📍 *Google Maps Location:*\n' +
+              'https://maps.app.goo.gl/uPQwpY8pa5r3bo9U7 \n\n' +
+              '⏰ *Timings:*\n' +
+              '• Check-in: 12:00 PM – 1:00 PM\n' +
+              '• Check-out: 11:00 AM\n\n' +
+              '🎬 *Guest Walkthrough Video:*\n' +
+              'Before your arrival, please take a quick look at our property tour:\n' +
+              'https://youtu.be/qbCQwGe8JeU?si=r7THeWcGLrPvPJD3 \n\n' +
+              '📶 *Wi-Fi Credentials:*\n' +
+              '• Network Name: *VinyasaNilaya_GF*\n' +
+              '• Password: *VinyasaGuest@1234*\n\n' +
+              '👨‍✈️ *Arrival Coordination:*\n' +
+              'Please contact my father at *9972433994* approximately *1 hour before you arrive*. He will be at the property to greet you and personally assist you with the check-in process.\n\n' +
+              '🏡 *Important House Notes & Guidelines:*\n' +
+              '• *Premises Rules:* To maintain the peaceful sanctity of our home, *smoking, consumption of alcohol, and non-vegetarian food are strictly prohibited* anywhere within the premises. Please observe designated quiet hours.\n' +
+              '• *Sustainability:* Help us support eco-friendly living by separating your waste into the designated dry and wet disposal bins.\n' +
+              '• *Extra Amenities:* Traveling with a 3rd guest? Please check the bedroom wardrobe for extra fresh sheets and pillows to set up the comfortable sofa-cum-bed.\n' +
+              '• *Laundry:* A washing machine is accessible on the second floor for a minimal additional usage charge.\n\n' +
+              'Should you require any immediate assistance or local recommendations, please do not hesitate to reach out. Thank you for choosing to stay with us! 🙏';
+              
+    // =========================================================================
+    // 3. FEEDBACK FOR AIRBNB CHANNELS (UPDATED & PROFESSIONALLY REVAMPED)
+    // =========================================================================
+    } else if (type === 'feedback_airbnb') {
+        msg = 'Thank you for staying with us at *Vinyasa Nilaya*! 🌿\n\n' +
+              'We truly appreciate your choice and hope you had a wonderful, relaxing stay. It was our pleasure hosting you!\n\n' +
+              'As Airbnb prompts you to review your stay, we would be incredibly grateful if you could take a brief moment to share your 5-star experience on the platform. Your public review helps our small community grow immensely.\n\n' +
+              '💡 *Have ideas for improvement?* If there is anything we could have done better, please reply directly right here on WhatsApp—your honest private suggestions help us elevate the stay for future guests.\n\n' +
+              '🏡 *Planning your next visit?* Please keep this chat active! Feel free to message us directly on WhatsApp for preferred availability or direct booking adjustments on your next trip. Safe onward travels!';
+              
+    // =========================================================================
+    // 4. FEEDBACK FOR DIRECT/PERSONAL GUESTS (GOOGLE MAPS REVIEW)
+    // =========================================================================
+    } else if (type === 'feedback_personal') {
+        msg = 'Thank you for staying with us at *Vinyasa Nilaya*! 🌿\n\n' +
+              'We truly appreciate your choice and hope you had a wonderful, relaxing stay. It was our absolute pleasure hosting you!\n\n' +
+              'As a direct guest, your experience helps our small community grow immensely. Could you take a quick minute to share your review and experience on Google Maps? It would mean the world to our team:\n' +
+              '👉 https://maps.app.goo.gl/FEKDxc9pfZZRbe1u5* \n\n' +
+              '💡 *Have ideas for improvement?* If there is anything we could have done better to elevate your stay, please reply directly right here on WhatsApp—your honest private suggestions are incredibly valuable to us.\n\n' +
+              '🏡 *Planning your next visit?* Please keep this chat active! Feel free to message us directly right here on WhatsApp for preferred availability, custom pricing, or direct booking adjustments on your next trip. Safe onward travels!';
+    // =========================================================================
+    // 5. EMPTY / BLANK CUSTOM TEMPLATE CAPTURE
+    // =========================================================================
+    } else if (type === 'custom_empty') {
+        msg = '';
     }
     
     return 'https://api.whatsapp.com/send?phone=' + phone + '&text=' + encodeURIComponent(msg);
@@ -457,7 +513,19 @@ function renderDashboard(data) {
 
             const linkVerification = getEncodedWAMessageLink('verification', targetPhone, guest.Name);
             const linkWelcome      = getEncodedWAMessageLink('welcome', targetPhone, guest.Name);
-            const linkFeedback     = getEncodedWAMessageLink('feedback', targetPhone, guest.Name);
+
+            // Automatically decide which feedback URL to map based on source metadata
+            const cleanSource = (guest.Source || '').toLowerCase().trim();
+            let linkFeedback = '';
+
+            if (cleanSource === 'airbnb') {
+                linkFeedback = getEncodedWAMessageLink('feedback_airbnb', targetPhone, guest.Name);
+            } else {
+                linkFeedback = getEncodedWAMessageLink('feedback_personal', targetPhone, guest.Name);
+            }
+
+            // Custom empty message starter link template
+            const linkCustomEmpty  = getEncodedWAMessageLink('custom_empty', targetPhone, guest.Name);
 
             whatsappActionsHtml = `
                 <div class="dropdown d-inline-block ms-2">
@@ -483,6 +551,11 @@ function renderDashboard(data) {
                         <li>
                             <a class="dropdown-item py-2 d-flex align-items-center" href="${linkFeedback}" target="_blank" style="border-radius: 6px;">
                                 <i class="bi bi-heart text-danger me-2 fs-6"></i> 3. Checkout & Feedback
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2 d-flex align-items-center" href="${linkCustomEmpty}" target="_blank" style="border-radius: 6px;">
+                                <i class="bi bi-chat-left-text text-secondary me-2 fs-6"></i> 4. Blank Custom Note
                             </a>
                         </li>
                     </ul>
